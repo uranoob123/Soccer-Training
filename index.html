@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Pro-Physics: Tactical Scenarios V2.7</title>
+    <title>Pro-Physics: Tactical Scenarios V2.9</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Teko:wght@400;600;700&display=swap');
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Segoe UI', sans-serif; }
@@ -226,7 +226,10 @@
                             target.z -= 15 + (this.id * 3); 
                             target.x += (this.id - 2) * 8; 
                             
-                            if (pPos.distanceTo(this.group.position) < 8) {
+                            // Use 2D horizontal distance here too
+                            let dx = pPos.x - this.group.position.x;
+                            let dz = pPos.z - this.group.position.z;
+                            if (Math.sqrt(dx*dx + dz*dz) < 8) {
                                 target.copy(pPos);
                             }
                         }
@@ -269,14 +272,19 @@
             const oppGoalZ = -PL; 
 
             teammates.forEach(t => {
-                let distToPlayer = playerPos.distanceTo(t.group.position);
+                let dx = playerPos.x - t.group.position.x;
+                let dz = playerPos.z - t.group.position.z;
+                let distToPlayer = Math.sqrt(dx*dx + dz*dz);
+
                 let receiverDistToGoal = Math.abs(t.group.position.z - oppGoalZ);
                 let playerDistToGoal = Math.abs(playerPos.z - oppGoalZ);
                 
                 let forwardProgression = playerDistToGoal - receiverDistToGoal;
                 let closestDefDist = Infinity;
                 defenders.forEach(d => {
-                    let dDist = t.group.position.distanceTo(d.group.position);
+                    let dDx = t.group.position.x - d.group.position.x;
+                    let dDz = t.group.position.z - d.group.position.z;
+                    let dDist = Math.sqrt(dDx*dDx + dDz*dDz);
                     if (dDist < closestDefDist) closestDefDist = dDist;
                 });
 
@@ -413,33 +421,24 @@
             let rating = 0;
 
             if (dist < 15) {
-                // Short/cowardly pass
-                rating = Math.floor(Math.random() * 15) + 15; // Random rating between 15-29
+                rating = Math.floor(Math.random() * 15) + 15; 
             } else if (forwardProgression < 0) {
-                // Backward pass
-                rating = Math.floor(Math.random() * 20) + 30; // Random rating between 30-49
+                rating = Math.floor(Math.random() * 20) + 30; 
             } else {
-                // Good forward pass, calculate how it compares to the mathematical best option
                 let rawScore = (forwardProgression * 2.0) + (linesBroken * 25.0) + (closestDefDist * 2.0);
                 if (idealScoreAtKick > 0) {
                     let ratio = Math.max(0, Math.min(1, rawScore / idealScoreAtKick));
-                    
-                    // The fix: Apply a steep curve to punish sub-optimal passes.
-                    // A pass that is mathematically half as good (0.5) drops to a curved multiplier of ~0.17
                     let curvedRatio = Math.pow(ratio, 2.5); 
-                    
                     rating = Math.floor(45 + (curvedRatio * 50)); 
                 } else {
                     rating = 45; 
                 }
             }
             
-            // Guarantee near 100 if it's literally the mathematically best option
             if (receiver === tacticalBestTeammate && rating >= 50) {
-                rating = Math.floor(Math.random() * 3) + 98; // 98, 99, or 100
+                rating = Math.floor(Math.random() * 3) + 98; 
             }
 
-            // Always highlight the mathematically best option so the player can learn
             if(receiver !== tacticalBestTeammate && tacticalBestTeammate) {
                 tacticalBestTeammate.bodyMat.color.setHex(0xffff00);
             }
@@ -571,8 +570,12 @@
                 let closestDef = null;
                 let minDist = Infinity;
                 defenders.forEach(d => {
-                    let dist = d.group.position.distanceTo(playerPos);
-                    if (dist < minDist) { minDist = dist; closestDef = d; }
+                    // CALCULATE HORIZONTAL DISTANCE
+                    let dx = d.group.position.x - playerPos.x;
+                    let dz = d.group.position.z - playerPos.z;
+                    let dist2D = Math.sqrt(dx*dx + dz*dz);
+                    
+                    if (dist2D < minDist) { minDist = dist2D; closestDef = d; }
                 });
 
                 teammates.forEach(t => t.update(dt, isBallInFlight, playerPos, dLevel, -PL));
@@ -581,24 +584,14 @@
                     let isPressing = (d === closestDef);
                     d.update(dt, isBallInFlight, playerPos, dLevel, -PL, isPressing);
                     
-                    if (!isBallInFlight && isRoundActive && d.group.position.distanceTo(playerPos) < 1.6) {
-                        
-                        triggerFeedback("TACKLED!", "DEFENDER STRIPPED THE BALL", "#ff2222", 3000);
+                    // NEW: Calculate 2D horizontal distance to ignore the Y-height difference
+                    let dx = d.group.position.x - playerPos.x;
+                    let dz = d.group.position.z - playerPos.z;
+                    let dist2D = Math.sqrt(dx*dx + dz*dz);
+
+                    if (isRoundActive && dist2D < 1.6) {
+                        triggerFeedback("ROUND OVER", "TACKLED BY DEFENDER", "#ff2222", 3000);
                         playerVel.set(0, 0, 0);
-                        
-                        isBallInFlight = true;
-                        ball = new THREE.Mesh(ballGeo, ballMat);
-                        ball.castShadow = true; scene.add(ball);
-                        ball.position.copy(playerPos);
-                        ball.position.y = BALL_RADIUS;
-
-                        let tackleDir = new THREE.Vector3().subVectors(playerPos, d.group.position).normalize();
-                        ballVel.copy(tackleDir).multiplyScalar(8);
-                        ballVel.y = 2.5; 
-
-                        const trailGeo = new THREE.BufferGeometry();
-                        trailLine = new THREE.Line(trailGeo, trailMat);
-                        scene.add(trailLine);
                     }
                 });
             }
