@@ -109,22 +109,20 @@
         const camera = new THREE.PerspectiveCamera(BASE_FOV, window.innerWidth / window.innerHeight, 0.1, 1000);
         let cameraTargetPos = new THREE.Vector3();
         
-        // Disabled antialias and forced pixel ratio to 1 for significant performance boost
         const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
         renderer.setPixelRatio(1); 
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.BasicShadowMap; // Cheaper shadows
+        renderer.shadowMap.type = THREE.BasicShadowMap; 
         document.body.appendChild(renderer.domElement);
 
         // --- LIGHTING (OPTIMIZED) ---
-        scene.add(new THREE.AmbientLight(0xffffff, 0.6)); // Increased ambient light
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6)); 
         
-        // Single directional light instead of 4 heavy spotlights
         const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
         dirLight.position.set(20, 60, 20);
         dirLight.castShadow = true;
-        dirLight.shadow.mapSize.width = 512; // Lower res shadow map
+        dirLight.shadow.mapSize.width = 512; 
         dirLight.shadow.mapSize.height = 512;
         dirLight.shadow.camera.left = -PW;
         dirLight.shadow.camera.right = PW;
@@ -158,11 +156,11 @@
         addLine(40, 0.3, 0, -PL + 16.5); addLine(40, 0.3, 0, PL - 16.5); 
         addLine(0.3, 16.5, -20, -PL + 8.25); addLine(0.3, 16.5, 20, -PL + 8.25); 
 
-        const circle = new THREE.Mesh(new THREE.RingGeometry(9.15, 9.45, 32), lineMat); // Reduced segments
+        const circle = new THREE.Mesh(new THREE.RingGeometry(9.15, 9.45, 32), lineMat); 
         circle.rotation.x = -Math.PI / 2; circle.position.y = 0.02; pitchGroup.add(circle);
         
         const wallMat = new THREE.MeshStandardMaterial({ color: 0x0a0f14, roughness: 0.8 });
-        const topWallMat = new THREE.MeshBasicMaterial({ color: 0x00ff88 }); // Cheaper material
+        const topWallMat = new THREE.MeshBasicMaterial({ color: 0x00ff88 }); 
         function buildWall(w, d, x, z) {
             const b = new THREE.Mesh(new THREE.BoxGeometry(w, 2, d), wallMat);
             b.position.set(x, 1, z); b.receiveShadow = true; b.castShadow = true; pitchGroup.add(b);
@@ -180,7 +178,7 @@
             const postMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
             const netMat = new THREE.MeshBasicMaterial({ color: 0xcccccc, wireframe: true, transparent: true, opacity: 0.2 });
             
-            const pGeo = new THREE.CylinderGeometry(0.08, 0.08, 2.44, 8); // Reduced segments
+            const pGeo = new THREE.CylinderGeometry(0.08, 0.08, 2.44, 8); 
             const lp = new THREE.Mesh(pGeo, postMat); lp.position.set(-3.66, 1.22, 0); lp.castShadow = true; group.add(lp);
             const rp = new THREE.Mesh(pGeo, postMat); rp.position.set(3.66, 1.22, 0); rp.castShadow = true; group.add(rp);
             const cb = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 7.32, 8), postMat);
@@ -205,9 +203,8 @@
         let keys = { w: false, a: false, s: false, d: false, shift: false };
         let lastTime = performance.now(), matchClock = 20;
 
-        // --- GLOBAL SHARED GEOMETRIES & MATERIALS (OPTIMIZED) ---
-        // Moved outside loops so they only generate once
-        const ballGeo = new THREE.IcosahedronGeometry(BALL_RADIUS, 1); // Reduced geometry detail
+        // --- GLOBAL SHARED GEOMETRIES & MATERIALS ---
+        const ballGeo = new THREE.IcosahedronGeometry(BALL_RADIUS, 1); 
         const ballMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
         const trailMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
         const skinMat = new THREE.MeshStandardMaterial({ color: 0xd2a679, roughness: 0.8 });
@@ -215,7 +212,7 @@
         const botTorsoGeo = new THREE.BoxGeometry(0.6, 0.7, 0.3); 
         const botShortsGeo = new THREE.BoxGeometry(0.6, 0.4, 0.3);
         const botLimbGeo = new THREE.BoxGeometry(0.2, 0.7, 0.2); 
-        const botHeadGeo = new THREE.SphereGeometry(0.22, 8, 8); // Reduced detail
+        const botHeadGeo = new THREE.SphereGeometry(0.22, 8, 8); 
 
         // --- PLAYER BOT CLASS ---
         class PlayerBot {
@@ -650,6 +647,36 @@
                         triggerFeedback("ROUND OVER", "TACKLED BY DEFENDER", "#ff2222", 3000); playerVel.set(0, 0, 0);
                     }
                 });
+
+                // --- BOT COLLISION & SEPARATION LOGIC ---
+                let allBots = [...teammates, ...defenders];
+                if (oppGoalKeeper) allBots.push(oppGoalKeeper);
+
+                for (let i = 0; i < allBots.length; i++) {
+                    for (let j = i + 1; j < allBots.length; j++) {
+                        let posA = allBots[i].group.position;
+                        let posB = allBots[j].group.position;
+                        let dx = posA.x - posB.x;
+                        let dz = posA.z - posB.z;
+                        let distSq = dx*dx + dz*dz;
+                        let separationDist = 3.0; // Keep players 3 meters apart
+
+                        if (distSq > 0.0001 && distSq < separationDist * separationDist) {
+                            let dist = Math.sqrt(distSq);
+                            let overlap = (separationDist - dist) * 0.5; 
+                            let pushX = (dx / dist) * overlap;
+                            let pushZ = (dz / dist) * overlap;
+
+                            // Goalies anchor their lines, so don't push them around
+                            if (allBots[i].role !== 'myGoalie' && allBots[i].role !== 'oppGoalie') {
+                                posA.x += pushX; posA.z += pushZ;
+                            }
+                            if (allBots[j].role !== 'myGoalie' && allBots[j].role !== 'oppGoalie') {
+                                posB.x -= pushX; posB.z -= pushZ;
+                            }
+                        }
+                    }
+                }
             }
 
             let idealCamPos = playerPos.clone().add(new THREE.Vector3(0, 1.8, 0));
