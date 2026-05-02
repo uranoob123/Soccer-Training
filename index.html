@@ -197,6 +197,7 @@
         let teammates = [], defenders = [], ball = null, trailLine = null, trailPoints = [];
         let oppGoalKeeper = null; 
         let ballVel = new THREE.Vector3(), isBallInFlight = false, isRoundActive = false;
+        let isReceivingPass = false, currentScenarioText = "", currentScenarioColor = "";
         let aimedReceiver = null, tacticalBestTeammate = null, idealScoreAtKick = -Infinity;
         let playerVel = new THREE.Vector3(), playerPos = new THREE.Vector3(0, 0, 20), playerPosAtKick = new THREE.Vector3();
         let playerStamina = 100, isCharging = false, chargeValue = 0, yaw = 0, pitchRot = 0;
@@ -359,7 +360,7 @@
 
         function resetGame() {
             matchClock = 20.0; playerStamina = 100; chargeValue = 0;
-            isBallInFlight = false; isCharging = false;
+            isBallInFlight = false; isCharging = false; isReceivingPass = true;
             playerVel.set(0,0,0); 
             
             const zones = [
@@ -369,15 +370,15 @@
             ];
             
             const selectedZone = zones[Math.floor(Math.random() * zones.length)];
+            currentScenarioText = "SCENARIO // " + selectedZone.name;
+            currentScenarioColor = selectedZone.color;
+            
             const banner = document.getElementById('scenario-banner');
-            banner.innerText = "SCENARIO // " + selectedZone.name;
-            banner.style.color = selectedZone.color;
+            banner.innerText = "SCENARIO // INCOMING PASS";
+            banner.style.color = "#00d4ff";
             
             let spawnZ = selectedZone.minZ + Math.random() * (selectedZone.maxZ - selectedZone.minZ);
             playerPos.set((Math.random()-0.5)*30, 0, spawnZ); 
-
-            yaw = 0; pitchRot = 0;
-            cameraTargetPos.copy(playerPos).setY(1.8);
 
             clearSceneEntities();
 
@@ -401,6 +402,29 @@
             oppGoalKeeper.baseZ = -PL + distOffLine;
             oppGoalKeeper.group.position.set(0, 0, oppGoalKeeper.baseZ);
             
+            // --- INCOMING PASS SETUP ---
+            let passer = teammates[3]; 
+            passer.group.position.set(playerPos.x + (Math.random() > 0.5 ? 12 : -12), 0, playerPos.z + 12 + Math.random() * 5);
+            
+            // Rotate camera to face the passing teammate precisely
+            let pdx = passer.group.position.x - playerPos.x;
+            let pdz = passer.group.position.z - playerPos.z;
+            yaw = Math.atan2(-pdx, -pdz); 
+            pitchRot = 0;
+            cameraTargetPos.copy(playerPos).setY(1.8);
+            camera.rotation.set(pitchRot, yaw, 0, 'YXZ'); 
+            
+            // Spawn the ball at the passer's feet
+            ball = new THREE.Mesh(ballGeo, ballMat); 
+            ball.castShadow = true; scene.add(ball);
+            ball.position.copy(passer.group.position); ball.position.y = BALL_RADIUS;
+            
+            // Set ball velocity towards player
+            let toPlayer = new THREE.Vector3().subVectors(playerPos, ball.position);
+            toPlayer.y = 0; let dist = toPlayer.length(); toPlayer.normalize();
+            ballVel.copy(toPlayer).multiplyScalar(dist / 1.1); // Takes roughly ~1.1 seconds to arrive
+            ballVel.y = 1.5; // Slight bounce
+
             fbContainer.style.display = 'none'; crosshair.style.transform = 'translate(-50%, -50%) scale(1)';
             isRoundActive = true;
         }
@@ -513,7 +537,7 @@
             if(e.code === 'KeyW') keys.w = true; if(e.code === 'KeyS') keys.s = true;
             if(e.code === 'KeyA') keys.a = true; if(e.code === 'KeyD') keys.d = true;
             if(e.code === 'ShiftLeft') keys.shift = true;
-            if(e.code === 'Space' && !isBallInFlight && isRoundActive) isCharging = true;
+            if(e.code === 'Space' && !isBallInFlight && isRoundActive && !isReceivingPass) isCharging = true;
         });
         window.addEventListener('keyup', e => { 
             if(e.code === 'KeyW') keys.w = false; if(e.code === 'KeyS') keys.s = false;
@@ -535,11 +559,42 @@
             camera.rotation.set(pitchRot, yaw, 0, 'YXZ');
             
             if (isRoundActive) {
-                if (!isBallInFlight) {
-                    matchClock -= dt; 
-                    document.getElementById('timer-bar').style.width = Math.max(0, matchClock/20*100) + "%";
-                    if (matchClock <= 0) triggerFeedback("TIME EXPIRED", "HELD BALL TOO LONG", "#ff2222");
+                
+                // --- INCOMING PASS LOGIC ---
+                if (isReceivingPass && ball) {
+                    ballVel.y -= GRAVITY * dt;
+                    ball.position.add(ballVel.clone().multiplyScalar(dt));
+                    ball.rotation.x += ballVel.z * dt; ball.rotation.z -= ballVel.x * dt;
 
+                    if (ball.position.y <= BALL_RADIUS) {
+                        ball.position.y = BALL_RADIUS; ballVel.y *= -RESTITUTION;
+                        ballVel.x *= ROLLING_FRICTION; ballVel.z *= ROLLING_FRICTION;
+                        if (Math.abs(ballVel.y) < 0.5) ballVel.y = 0;
+                    }
+
+                    let toP = new THREE.Vector3().subVectors(playerPos, ball.position);
+                    toP.y = 0;
+                    if (toP.length() > 1.4) {
+                        // Subtle homing algorithm so the ball doesn't miss if you start running immediately
+                        let desired = toP.normalize().multiplyScalar(15);
+                        ballVel.x += (desired.x - ballVel.x) * dt * 5.0;
+                        ballVel.z += (desired.z - ballVel.z) * dt * 5.0;
+                    } else if (ball.position.y < 1.5) {
+                        // Received!
+                        scene.remove(ball); ball = null; isReceivingPass = false;
+                        const banner = document.getElementById('scenario-banner');
+                        banner.innerText = currentScenarioText; banner.style.color = currentScenarioColor;
+                    }
+                }
+
+                if (!isBallInFlight) {
+                    // Match clock only drains after you receive the ball
+                    if (!isReceivingPass) {
+                        matchClock -= dt; 
+                        if (matchClock <= 0) triggerFeedback("TIME EXPIRED", "HELD BALL TOO LONG", "#ff2222");
+                    }
+
+                    // Movement is shared, so you can move to meet the pass
                     let input = new THREE.Vector3();
                     if (keys.w) input.z -= 1; if (keys.s) input.z += 1;
                     if (keys.a) input.x -= 1; if (keys.d) input.x += 1;
@@ -561,6 +616,7 @@
                     camera.fov += (targetFOV - camera.fov) * 10 * dt; camera.updateProjectionMatrix();
                 }
 
+                document.getElementById('timer-bar').style.width = Math.max(0, matchClock/20*100) + "%";
                 document.getElementById('stamina-bar').style.width = playerStamina + "%";
                 document.getElementById('stamina-bar').style.background = playerStamina < 20 ? "#ff2222" : "#00d4ff";
                 document.getElementById('stamina-bar').style.boxShadow = playerStamina < 20 ? "0 0 10px #ff2222" : "0 0 10px #00d4ff";
@@ -641,9 +697,9 @@
                 if (oppGoalKeeper) oppGoalKeeper.update(dt, timeSec, isBallInFlight, playerPos, dLevel);
                 teammates.forEach(t => t.update(dt, timeSec, isBallInFlight, playerPos, dLevel, false, offsideLineZ));
                 defenders.forEach(d => { 
-                    d.update(dt, timeSec, isBallInFlight, playerPos, dLevel, (d === closestDef));
+                    d.update(dt, timeSec, isBallInFlight, playerPos, dLevel, (d === closestDef) && !isReceivingPass); // Don't heavy press while you wait for the ball
                     let dx = d.group.position.x - playerPos.x; let dz = d.group.position.z - playerPos.z;
-                    if (isRoundActive && Math.sqrt(dx*dx + dz*dz) < 1.6) {
+                    if (isRoundActive && !isReceivingPass && Math.sqrt(dx*dx + dz*dz) < 1.6) {
                         triggerFeedback("ROUND OVER", "TACKLED BY DEFENDER", "#ff2222", 3000); playerVel.set(0, 0, 0);
                     }
                 });
@@ -656,24 +712,17 @@
                     for (let j = i + 1; j < allBots.length; j++) {
                         let posA = allBots[i].group.position;
                         let posB = allBots[j].group.position;
-                        let dx = posA.x - posB.x;
-                        let dz = posA.z - posB.z;
+                        let dx = posA.x - posB.x; let dz = posA.z - posB.z;
                         let distSq = dx*dx + dz*dz;
-                        let separationDist = 3.0; // Keep players 3 meters apart
+                        let separationDist = 3.0; 
 
                         if (distSq > 0.0001 && distSq < separationDist * separationDist) {
                             let dist = Math.sqrt(distSq);
                             let overlap = (separationDist - dist) * 0.5; 
-                            let pushX = (dx / dist) * overlap;
-                            let pushZ = (dz / dist) * overlap;
+                            let pushX = (dx / dist) * overlap; let pushZ = (dz / dist) * overlap;
 
-                            // Goalies anchor their lines, so don't push them around
-                            if (allBots[i].role !== 'myGoalie' && allBots[i].role !== 'oppGoalie') {
-                                posA.x += pushX; posA.z += pushZ;
-                            }
-                            if (allBots[j].role !== 'myGoalie' && allBots[j].role !== 'oppGoalie') {
-                                posB.x -= pushX; posB.z -= pushZ;
-                            }
+                            if (allBots[i].role !== 'myGoalie' && allBots[i].role !== 'oppGoalie') { posA.x += pushX; posA.z += pushZ; }
+                            if (allBots[j].role !== 'myGoalie' && allBots[j].role !== 'oppGoalie') { posB.x -= pushX; posB.z -= pushZ; }
                         }
                     }
                 }
