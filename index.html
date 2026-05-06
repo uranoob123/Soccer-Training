@@ -12,20 +12,87 @@
         .subtitle { color: #00ff88; font-weight: 700; letter-spacing: 3px; font-size: 14px; margin-bottom: 5px; text-transform: uppercase; transition: color 0.3s; }
         .controls-hint { font-size: 12px; color: #aaa; margin-top: 10px; background: rgba(0,0,0,0.5); padding: 8px 12px; border-radius: 6px; backdrop-filter: blur(4px); display: inline-block; border: 1px solid rgba(255,255,255,0.1); }
 
-        #controls { 
-            position: absolute; top: 40px; right: 40px; background: rgba(15, 20, 25, 0.7); 
-            padding: 20px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); color: white; z-index: 30;
-            width: 250px; pointer-events: auto; backdrop-filter: blur(12px); box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+        /* --- SETTINGS BUTTON --- */
+        #settings-btn {
+            position: absolute; top: 40px; right: 40px; z-index: 40;
+            width: 48px; height: 48px; border-radius: 50%;
+            background: rgba(15, 20, 25, 0.85); border: 1px solid rgba(255,255,255,0.15);
+            color: #fff; font-size: 22px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            backdrop-filter: blur(12px); box-shadow: 0 4px 20px rgba(0,0,0,0.7);
+            transition: transform 0.3s, border-color 0.3s, box-shadow 0.3s;
+            pointer-events: auto;
         }
-        #difficulty-slider { width: 100%; cursor: pointer; accent-color: #00ff88; margin-top: 15px; }
-        .diff-text { font-size: 12px; font-weight: 700; color: #ccc; letter-spacing: 1px;}
-        .diff-val { color: #00ff88; float: right; font-size: 18px; font-weight: 900; }
+        #settings-btn:hover { border-color: #00ff88; box-shadow: 0 4px 20px rgba(0,255,136,0.3); }
+        #settings-btn.open { transform: rotate(45deg); border-color: #00ff88; }
 
+        /* --- SETTINGS PANEL --- */
+        #settings-panel {
+            position: absolute; top: 100px; right: 40px;
+            background: rgba(10, 14, 20, 0.92);
+            padding: 0; border-radius: 18px;
+            border: 1px solid rgba(255,255,255,0.1); color: white; z-index: 30;
+            width: 280px; pointer-events: auto;
+            backdrop-filter: blur(18px); box-shadow: 0 20px 60px rgba(0,0,0,0.9);
+            overflow: hidden;
+            transform: translateY(-10px) scaleY(0.95);
+            transform-origin: top center;
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.25s ease, transform 0.25s ease;
+        }
+        #settings-panel.visible { opacity: 1; transform: translateY(0) scaleY(1); pointer-events: auto; }
+
+        .settings-header {
+            padding: 18px 22px 12px; border-bottom: 1px solid rgba(255,255,255,0.07);
+            font-size: 11px; font-weight: 800; letter-spacing: 2.5px; color: #00ff88; text-transform: uppercase;
+        }
+        .settings-section { padding: 18px 22px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+        .settings-section:last-child { border-bottom: none; }
+
+        .setting-label {
+            font-size: 11px; font-weight: 800; letter-spacing: 1.5px; color: #aaa;
+            text-transform: uppercase; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;
+        }
+        .setting-label span { color: #00ff88; font-size: 16px; font-weight: 900; }
+
+        /* --- DIFFICULTY SLIDER --- */
+        .custom-slider { width: 100%; cursor: pointer; -webkit-appearance: none; appearance: none; height: 6px; border-radius: 3px; outline: none; background: rgba(255,255,255,0.1); }
+        .custom-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #00ff88; cursor: pointer; box-shadow: 0 0 10px rgba(0,255,136,0.6); border: 2px solid #fff; transition: transform 0.1s; }
+        .custom-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+        .slider-track { position: relative; margin-top: 4px; }
+        .slider-labels { display: flex; justify-content: space-between; margin-top: 8px; font-size: 9px; font-weight: 700; color: #555; letter-spacing: 1px; }
+
+        /* --- DAY/NIGHT TOGGLE --- */
+        .toggle-group { display: flex; gap: 8px; }
+        .toggle-btn {
+            flex: 1; padding: 10px 0; border-radius: 10px; border: 1.5px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.04); color: #777; font-family: 'Montserrat', sans-serif;
+            font-size: 11px; font-weight: 800; letter-spacing: 1.5px; cursor: pointer;
+            text-transform: uppercase; transition: all 0.2s; display: flex; flex-direction: column;
+            align-items: center; gap: 5px;
+        }
+        .toggle-btn .icon { font-size: 20px; }
+        .toggle-btn.active { border-color: #00ff88; background: rgba(0,255,136,0.1); color: #00ff88; box-shadow: 0 0 15px rgba(0,255,136,0.15); }
+        .toggle-btn:hover:not(.active) { border-color: rgba(255,255,255,0.25); color: #ccc; background: rgba(255,255,255,0.07); }
+
+        /* --- PRESS STYLE TOGGLE --- */
+        .press-group { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
+        .press-btn {
+            width: 100%; padding: 9px 14px; border-radius: 9px; border: 1.5px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.04); color: #777; font-family: 'Montserrat', sans-serif;
+            font-size: 10px; font-weight: 800; letter-spacing: 1.2px; cursor: pointer;
+            text-transform: uppercase; transition: all 0.2s; text-align: left; display: flex; align-items: center; gap: 10px;
+        }
+        .press-btn .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+        .press-btn.active { border-color: #ff2222; background: rgba(255,34,34,0.12); color: #ff5555; box-shadow: 0 0 12px rgba(255,34,34,0.15); }
+        .press-btn.active-mid { border-color: #ffcc00; background: rgba(255,204,0,0.12); color: #ffcc00; box-shadow: 0 0 12px rgba(255,204,0,0.15); }
+        .press-btn.active-low { border-color: #00d4ff; background: rgba(0,212,255,0.12); color: #00d4ff; box-shadow: 0 0 12px rgba(0,212,255,0.15); }
+
+        /* --- HUD --- */
         .hud-container { position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%); display: flex; gap: 20px; pointer-events: none; }
         .hud-box { background: rgba(0,0,0,0.5); padding: 12px 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(8px); box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         .hud-label { color: #aaa; font-size: 10px; font-weight: 800; letter-spacing: 1.5px; margin-bottom: 8px; }
         .bar-bg { width: 180px; height: 10px; background: rgba(0,0,0,0.8); border-radius: 5px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05); }
-        
         #timer-bar { height: 100%; background: #fff; width: 100%; transition: width 0.1s linear; }
         #stamina-bar { height: 100%; background: #00d4ff; width: 100%; box-shadow: 0 0 10px #00d4ff; }
         #power-bar { height: 100%; background: linear-gradient(90deg, #00ff88, #ffcc00, #ff2222); width: 0%; transition: width 0.05s; box-shadow: 0 0 15px rgba(255, 34, 34, 0.5); }
@@ -56,9 +123,53 @@
         <div class="controls-hint">W/A/S/D: MOVE &nbsp;|&nbsp; SHIFT: SPRINT &nbsp;|&nbsp; SPACE: PASS/SHOOT (HOLD FOR POWER)</div>
     </div>
 
-    <div id="controls">
-        <div class="diff-text">DEFENDER PRESS <span class="diff-val" id="diff-label">70</span></div>
-        <input type="range" id="difficulty-slider" min="1" max="100" value="70">
+    <!-- Settings Toggle Button -->
+    <button id="settings-btn" title="Settings">⚙</button>
+
+    <!-- Settings Panel -->
+    <div id="settings-panel">
+        <div class="settings-header">⚙ &nbsp;Settings</div>
+
+        <!-- Day / Night -->
+        <div class="settings-section">
+            <div class="setting-label">Time of Day</div>
+            <div class="toggle-group">
+                <button class="toggle-btn active" id="btn-day" onclick="setTimeOfDay('day')">
+                    <span class="icon">☀️</span>Day
+                </button>
+                <button class="toggle-btn" id="btn-sunset" onclick="setTimeOfDay('sunset')">
+                    <span class="icon">🌅</span>Dusk
+                </button>
+                <button class="toggle-btn" id="btn-night" onclick="setTimeOfDay('night')">
+                    <span class="icon">🌙</span>Night
+                </button>
+            </div>
+        </div>
+
+        <!-- Defender Difficulty -->
+        <div class="settings-section">
+            <div class="setting-label">Defender Press <span id="diff-label">70</span></div>
+            <div class="slider-track">
+                <input type="range" id="difficulty-slider" class="custom-slider" min="1" max="100" value="70">
+            </div>
+            <div class="slider-labels"><span>CASUAL</span><span>SEMI-PRO</span><span>ELITE</span></div>
+        </div>
+
+        <!-- Pressing Style -->
+        <div class="settings-section">
+            <div class="setting-label" style="margin-bottom:10px;">Pressing Style</div>
+            <div class="press-group">
+                <button class="press-btn active" id="ps-high" onclick="setPressStyle('high')">
+                    <span class="dot"></span>HIGH PRESS — Defenders chase everywhere
+                </button>
+                <button class="press-btn" id="ps-mid" onclick="setPressStyle('mid')">
+                    <span class="dot"></span>MID BLOCK — Compact defensive shape
+                </button>
+                <button class="press-btn" id="ps-low" onclick="setPressStyle('low')">
+                    <span class="dot"></span>LOW BLOCK — Sit deep, protect goal
+                </button>
+            </div>
+        </div>
     </div>
 
     <div class="hud-container">
@@ -101,7 +212,22 @@
         const fbSub = document.getElementById('fb-sub');
         const crosshair = document.getElementById('crosshair');
 
-        // --- SCENE SETUP (OPTIMIZED) ---
+        // --- SETTINGS PANEL TOGGLE ---
+        const settingsBtn = document.getElementById('settings-btn');
+        const settingsPanel = document.getElementById('settings-panel');
+        settingsBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = settingsPanel.classList.toggle('visible');
+            settingsBtn.classList.toggle('open', isOpen);
+        });
+        document.addEventListener('click', (e) => {
+            if (!settingsPanel.contains(e.target) && e.target !== settingsBtn) {
+                settingsPanel.classList.remove('visible');
+                settingsBtn.classList.remove('open');
+            }
+        });
+
+        // --- SCENE SETUP ---
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x050a10);
         scene.fog = new THREE.FogExp2(0x050a10, 0.005);
@@ -116,8 +242,9 @@
         renderer.shadowMap.type = THREE.BasicShadowMap; 
         document.body.appendChild(renderer.domElement);
 
-        // --- LIGHTING (OPTIMIZED) ---
-        scene.add(new THREE.AmbientLight(0xffffff, 0.6)); 
+        // --- LIGHTING ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
         
         const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
         dirLight.position.set(20, 60, 20);
@@ -131,6 +258,91 @@
         dirLight.shadow.camera.near = 0.5;
         dirLight.shadow.camera.far = 150;
         scene.add(dirLight);
+
+        // Stadium flood lights for night mode
+        const floodLights = [];
+        const floodPositions = [[-PW+5, 30, -PL+5], [PW-5, 30, -PL+5], [-PW+5, 30, PL-5], [PW-5, 30, PL-5]];
+        floodPositions.forEach(([x,y,z]) => {
+            const fl = new THREE.PointLight(0xfff5cc, 0, 120);
+            fl.position.set(x, y, z);
+            fl.castShadow = false;
+            scene.add(fl);
+            floodLights.push(fl);
+        });
+
+        // --- TIME OF DAY PRESETS ---
+        const timePresets = {
+            day: {
+                skyColor: 0x050a10,
+                fogColor: 0x050a10,
+                fogDensity: 0.005,
+                ambientColor: 0xffffff,
+                ambientIntensity: 0.6,
+                dirColor: 0xffffff,
+                dirIntensity: 1.5,
+                dirPos: [20, 60, 20],
+                floodIntensity: 0,
+                wallTopColor: 0x00ff88
+            },
+            sunset: {
+                skyColor: 0x1a0a00,
+                fogColor: 0x2a0e00,
+                fogDensity: 0.004,
+                ambientColor: 0xff8844,
+                ambientIntensity: 0.5,
+                dirColor: 0xff6622,
+                dirIntensity: 1.2,
+                dirPos: [80, 15, 40],
+                floodIntensity: 0,
+                wallTopColor: 0xff6622
+            },
+            night: {
+                skyColor: 0x000205,
+                fogColor: 0x000205,
+                fogDensity: 0.007,
+                ambientColor: 0x334466,
+                ambientIntensity: 0.15,
+                dirColor: 0x334499,
+                dirIntensity: 0.2,
+                dirPos: [20, 60, 20],
+                floodIntensity: 1.8,
+                wallTopColor: 0x00ff88
+            }
+        };
+
+        let wallTopMeshes = [];
+        let currentTimeOfDay = 'day';
+
+        // Expose to global for button onclick
+        window.setTimeOfDay = function(mode) {
+            currentTimeOfDay = mode;
+            const p = timePresets[mode];
+            scene.background = new THREE.Color(p.skyColor);
+            scene.fog.color.set(p.fogColor);
+            scene.fog.density = p.fogDensity;
+            ambientLight.color.set(p.ambientColor);
+            ambientLight.intensity = p.ambientIntensity;
+            dirLight.color.set(p.dirColor);
+            dirLight.intensity = p.dirIntensity;
+            dirLight.position.set(...p.dirPos);
+            floodLights.forEach(fl => { fl.intensity = p.floodIntensity; });
+            wallTopMeshes.forEach(m => m.material.color.set(p.wallTopColor));
+
+            ['btn-day','btn-sunset','btn-night'].forEach(id => document.getElementById(id).classList.remove('active'));
+            document.getElementById('btn-' + mode).classList.add('active');
+        };
+
+        // Expose press style to global
+        let pressStyle = 'high'; // 'high' | 'mid' | 'low'
+        window.setPressStyle = function(style) {
+            pressStyle = style;
+            ['ps-high','ps-mid','ps-low'].forEach(id => {
+                const el = document.getElementById(id);
+                el.classList.remove('active','active-mid','active-low');
+            });
+            const classMap = { high: 'active', mid: 'active-mid', low: 'active-low' };
+            document.getElementById('ps-' + style).classList.add(classMap[style]);
+        };
 
         // --- STADIUM & PITCH ---
         const pitchGroup = new THREE.Group();
@@ -160,17 +372,29 @@
         circle.rotation.x = -Math.PI / 2; circle.position.y = 0.02; pitchGroup.add(circle);
         
         const wallMat = new THREE.MeshStandardMaterial({ color: 0x0a0f14, roughness: 0.8 });
-        const topWallMat = new THREE.MeshBasicMaterial({ color: 0x00ff88 }); 
+
         function buildWall(w, d, x, z) {
+            const topMat = new THREE.MeshBasicMaterial({ color: 0x00ff88 });
             const b = new THREE.Mesh(new THREE.BoxGeometry(w, 2, d), wallMat);
             b.position.set(x, 1, z); b.receiveShadow = true; b.castShadow = true; pitchGroup.add(b);
-            const top = new THREE.Mesh(new THREE.BoxGeometry(w, 0.2, d), topWallMat);
+            const top = new THREE.Mesh(new THREE.BoxGeometry(w, 0.2, d), topMat);
             top.position.set(x, 2.1, z); pitchGroup.add(top);
+            wallTopMeshes.push(top);
         }
         buildWall(PW*2 + 10, 1, 0, -PL - 5); buildWall(PW*2 + 10, 1, 0, PL + 5);
         buildWall(1, PL*2 + 10, -PW - 5, 0); buildWall(1, PL*2 + 10, PW + 5, 0);
 
         scene.add(pitchGroup);
+
+        // Stadium floodlight pole meshes (visual only)
+        const poleMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.6 });
+        const lampMat = new THREE.MeshBasicMaterial({ color: 0xfff5cc });
+        floodPositions.forEach(([x,y,z]) => {
+            const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, y, 6), poleMat);
+            pole.position.set(x, y/2, z); scene.add(pole);
+            const lamp = new THREE.Mesh(new THREE.BoxGeometry(3, 0.8, 1.2), lampMat);
+            lamp.position.set(x, y + 0.4, z); scene.add(lamp);
+        });
 
         // --- GOALS ---
         function createGoal(zPos, rotY) {
@@ -204,7 +428,7 @@
         let keys = { w: false, a: false, s: false, d: false, shift: false };
         let lastTime = performance.now(), matchClock = 20;
 
-        // --- GLOBAL SHARED GEOMETRIES & MATERIALS ---
+        // --- SHARED GEOMETRIES & MATERIALS ---
         const ballGeo = new THREE.IcosahedronGeometry(BALL_RADIUS, 1); 
         const ballMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
         const trailMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
@@ -248,18 +472,38 @@
             }
             
             update(dt, timeSec, ballInFlight, pPos, diffLevel, isPressing = false, offsideLineZ = -75) {
-                let currentSpeed = this.baseSpeed; let target = new THREE.Vector3(); let intensity = diffLevel / 100; 
+                let currentSpeed = this.baseSpeed; let target = new THREE.Vector3(); let intensity = diffLevel / 100;
+
+                // Pressing style modifiers
+                let pressMultiplier = 1.0, pressZOffset = 12;
+                if (pressStyle === 'mid') { pressMultiplier = 0.7; pressZOffset = 20; }
+                else if (pressStyle === 'low') { pressMultiplier = 0.45; pressZOffset = 35; }
 
                 if (this.role === 'defender') {
-                    currentSpeed = 5.0 + (intensity * 6.0); 
+                    currentSpeed = 5.0 + (intensity * 6.0);
                     if (ballInFlight && ball) { target.copy(ball.position); currentSpeed *= 1.2; } 
                     else {
-                        if (isPressing) { target.copy(pPos); currentSpeed += (intensity * 7.0); } 
-                        else {
-                            target.copy(pPos); target.z -= 12 + (this.id * 3); target.x += (this.id - 2) * 8; 
+                        if (isPressing) {
+                            // High press: chase player
+                            // Mid: stay in shape, approach when within range
+                            // Low: hold deep line
+                            if (pressStyle === 'high') {
+                                target.copy(pPos); currentSpeed += (intensity * 7.0);
+                            } else if (pressStyle === 'mid') {
+                                let dx = pPos.x - this.group.position.x; let dz = pPos.z - this.group.position.z;
+                                if (Math.sqrt(dx*dx + dz*dz) < 18) { target.copy(pPos); currentSpeed += intensity * 4.0; }
+                                else { target.set(pPos.x * 0.5 + (this.id-2)*8, 0, pPos.z - pressZOffset - (this.id*3)); }
+                            } else {
+                                // Low block: stay at deep line
+                                target.set((this.id - 2) * 9, 0, pPos.z - pressZOffset - (this.id * 2));
+                            }
+                        } else {
+                            target.copy(pPos);
+                            target.z -= pressZOffset + (this.id * 3); target.x += (this.id - 2) * 8;
                             let dx = pPos.x - this.group.position.x; let dz = pPos.z - this.group.position.z;
-                            if (Math.sqrt(dx*dx + dz*dz) < 10) target.copy(pPos);
+                            if (pressStyle === 'high' && Math.sqrt(dx*dx + dz*dz) < 10) target.copy(pPos);
                         }
+                        currentSpeed *= pressMultiplier;
                     }
                 } else if (this.role === 'teammate') {
                     if (ballInFlight && ball) {
@@ -277,20 +521,15 @@
                     if (ballInFlight && ball && this === aimedReceiver) {
                         target.copy(ball.position); if (typeof ballVel !== 'undefined') target.add(ballVel.clone().multiplyScalar(0.5)); 
                         currentSpeed *= 1.3;
-                    } else {
-                        target.set(pPos.x * 0.4, 0, PL - 8); 
-                    }
+                    } else { target.set(pPos.x * 0.4, 0, PL - 8); }
                 } else if (this.role === 'oppGoalie') {
                     currentSpeed = 10.0 + (intensity * 4.0);
                     if (ballInFlight && ball && ballVel.z < 0 && ball.position.z < 0) { 
                         let timeToGoal = Math.max(0.1, (this.baseZ - ball.position.z) / ballVel.z);
                         let predX = ball.position.x + ballVel.x * timeToGoal;
                         predX = Math.max(-4.0, Math.min(4.0, predX)); 
-                        target.set(predX, 0, this.baseZ);
-                        currentSpeed = 25.0; 
-                    } else {
-                        target.set(pPos.x * 0.25, 0, this.baseZ); 
-                    }
+                        target.set(predX, 0, this.baseZ); currentSpeed = 25.0; 
+                    } else { target.set(pPos.x * 0.25, 0, this.baseZ); }
                 }
 
                 target.y = 0; let direction = new THREE.Vector3().subVectors(target, this.group.position);
@@ -299,7 +538,6 @@
                 if (moveDist > 0.5) {
                     actualSpeed = Math.min(currentSpeed * dt, moveDist);
                     this.group.position.add(direction.normalize().multiplyScalar(actualSpeed));
-                    
                     let targetRot = Math.atan2(direction.x, direction.z);
                     let diff = targetRot - this.group.rotation.y;
                     while (diff < -Math.PI) diff += Math.PI * 2; while (diff > Math.PI) diff -= Math.PI * 2;
@@ -402,11 +640,9 @@
             oppGoalKeeper.baseZ = -PL + distOffLine;
             oppGoalKeeper.group.position.set(0, 0, oppGoalKeeper.baseZ);
             
-            // --- INCOMING PASS SETUP ---
             let passer = teammates[3]; 
             passer.group.position.set(playerPos.x + (Math.random() > 0.5 ? 12 : -12), 0, playerPos.z + 12 + Math.random() * 5);
             
-            // Rotate camera to face the passing teammate precisely
             let pdx = passer.group.position.x - playerPos.x;
             let pdz = passer.group.position.z - playerPos.z;
             yaw = Math.atan2(-pdx, -pdz); 
@@ -414,16 +650,14 @@
             cameraTargetPos.copy(playerPos).setY(1.8);
             camera.rotation.set(pitchRot, yaw, 0, 'YXZ'); 
             
-            // Spawn the ball at the passer's feet
             ball = new THREE.Mesh(ballGeo, ballMat); 
             ball.castShadow = true; scene.add(ball);
             ball.position.copy(passer.group.position); ball.position.y = BALL_RADIUS;
             
-            // Set ball velocity towards player
             let toPlayer = new THREE.Vector3().subVectors(playerPos, ball.position);
             toPlayer.y = 0; let dist = toPlayer.length(); toPlayer.normalize();
-            ballVel.copy(toPlayer).multiplyScalar(dist / 1.1); // Takes roughly ~1.1 seconds to arrive
-            ballVel.y = 1.5; // Slight bounce
+            ballVel.copy(toPlayer).multiplyScalar(dist / 1.1);
+            ballVel.y = 1.5;
 
             fbContainer.style.display = 'none'; crosshair.style.transform = 'translate(-50%, -50%) scale(1)';
             isRoundActive = true;
@@ -506,23 +740,14 @@
             let elitePassAvailable = idealScoreAtKick > 115;
 
             if (isGoal) {
-                if (distToGoal > 35) {
-                    subText = "WORLD CLASS LOB!";
-                } else if (distToGoal > 20) {
-                    subText = "ABSOLUTE SCREAMER!";
-                } else {
-                    subText = "CLINICAL FINISH!";
-                }
+                if (distToGoal > 35) subText = "WORLD CLASS LOB!";
+                else if (distToGoal > 20) subText = "ABSOLUTE SCREAMER!";
+                else subText = "CLINICAL FINISH!";
             } else {
-                if (distToGoal > 45) {
-                    subText = "POOR DECISION - WAY TOO FAR";
-                } else if (elitePassAvailable && distToGoal > 25) { 
-                    subText = "SELFISH - MISSED OPEN TEAMMATE";
-                } else if (distToGoal <= 28 && !elitePassAvailable) {
-                    subText = "UNLUCKY - RIGHT IDEA TO SHOOT";
-                } else {
-                    subText = "POOR EXECUTION";
-                }
+                if (distToGoal > 45) subText = "POOR DECISION - WAY TOO FAR";
+                else if (elitePassAvailable && distToGoal > 25) subText = "SELFISH - MISSED OPEN TEAMMATE";
+                else if (distToGoal <= 28 && !elitePassAvailable) subText = "UNLUCKY - RIGHT IDEA TO SHOOT";
+                else subText = "POOR EXECUTION";
             }
 
             if (tacticalBestTeammate && elitePassAvailable && distToGoal > 25 && !isGoal) {
@@ -532,7 +757,7 @@
             triggerFeedback(mainText, subText, color, 4500);
         }
 
-        // --- INPUT HANDLING ---
+        // --- INPUT ---
         window.addEventListener('keydown', e => { 
             if(e.code === 'KeyW') keys.w = true; if(e.code === 'KeyS') keys.s = true;
             if(e.code === 'KeyA') keys.a = true; if(e.code === 'KeyD') keys.d = true;
@@ -548,7 +773,11 @@
         document.addEventListener('mousemove', e => { 
             if (document.pointerLockElement) { yaw -= e.movementX * 0.002; pitchRot = Math.max(-0.8, Math.min(0.8, pitchRot - e.movementY * 0.002)); } 
         });
-        document.addEventListener('click', () => { document.body.requestPointerLock(); });
+        document.addEventListener('click', (e) => {
+            if (!settingsPanel.contains(e.target) && e.target !== settingsBtn) {
+                document.body.requestPointerLock();
+            }
+        });
 
         // --- MAIN GAME LOOP ---
         function animate(now) {
@@ -559,8 +788,6 @@
             camera.rotation.set(pitchRot, yaw, 0, 'YXZ');
             
             if (isRoundActive) {
-                
-                // --- INCOMING PASS LOGIC ---
                 if (isReceivingPass && ball) {
                     ballVel.y -= GRAVITY * dt;
                     ball.position.add(ballVel.clone().multiplyScalar(dt));
@@ -575,12 +802,10 @@
                     let toP = new THREE.Vector3().subVectors(playerPos, ball.position);
                     toP.y = 0;
                     if (toP.length() > 1.4) {
-                        // Subtle homing algorithm so the ball doesn't miss if you start running immediately
                         let desired = toP.normalize().multiplyScalar(15);
                         ballVel.x += (desired.x - ballVel.x) * dt * 5.0;
                         ballVel.z += (desired.z - ballVel.z) * dt * 5.0;
                     } else if (ball.position.y < 1.5) {
-                        // Received!
                         scene.remove(ball); ball = null; isReceivingPass = false;
                         const banner = document.getElementById('scenario-banner');
                         banner.innerText = currentScenarioText; banner.style.color = currentScenarioColor;
@@ -588,13 +813,11 @@
                 }
 
                 if (!isBallInFlight) {
-                    // Match clock only drains after you receive the ball
                     if (!isReceivingPass) {
                         matchClock -= dt; 
                         if (matchClock <= 0) triggerFeedback("TIME EXPIRED", "HELD BALL TOO LONG", "#ff2222");
                     }
 
-                    // Movement is shared, so you can move to meet the pass
                     let input = new THREE.Vector3();
                     if (keys.w) input.z -= 1; if (keys.s) input.z += 1;
                     if (keys.a) input.x -= 1; if (keys.d) input.x += 1;
@@ -646,10 +869,7 @@
                     if (ball.position.z <= -PL + BALL_RADIUS) {
                         passCompleted = true;
                         let isGoal = Math.abs(ball.position.x) < 3.66 && ball.position.y < 2.44;
-                        if (isGoal) {
-                            ballVel.set(0,0,0);
-                            ball.position.z = Math.max(ball.position.z, -PL - 1.5);
-                        }
+                        if (isGoal) { ballVel.set(0,0,0); ball.position.z = Math.max(ball.position.z, -PL - 1.5); }
                         evaluateShotResult(isGoal);
                     } else if (Math.abs(ball.position.x) >= PW || ball.position.z >= PL) {
                         passCompleted = true; triggerFeedback("OUT OF BOUNDS", "WASTED POSSESSION", "#ff4444");
@@ -697,30 +917,24 @@
                 if (oppGoalKeeper) oppGoalKeeper.update(dt, timeSec, isBallInFlight, playerPos, dLevel);
                 teammates.forEach(t => t.update(dt, timeSec, isBallInFlight, playerPos, dLevel, false, offsideLineZ));
                 defenders.forEach(d => { 
-                    d.update(dt, timeSec, isBallInFlight, playerPos, dLevel, (d === closestDef) && !isReceivingPass); // Don't heavy press while you wait for the ball
+                    d.update(dt, timeSec, isBallInFlight, playerPos, dLevel, (d === closestDef) && !isReceivingPass);
                     let dx = d.group.position.x - playerPos.x; let dz = d.group.position.z - playerPos.z;
                     if (isRoundActive && !isReceivingPass && Math.sqrt(dx*dx + dz*dz) < 1.6) {
                         triggerFeedback("ROUND OVER", "TACKLED BY DEFENDER", "#ff2222", 3000); playerVel.set(0, 0, 0);
                     }
                 });
 
-                // --- BOT COLLISION & SEPARATION LOGIC ---
                 let allBots = [...teammates, ...defenders];
                 if (oppGoalKeeper) allBots.push(oppGoalKeeper);
 
                 for (let i = 0; i < allBots.length; i++) {
                     for (let j = i + 1; j < allBots.length; j++) {
-                        let posA = allBots[i].group.position;
-                        let posB = allBots[j].group.position;
+                        let posA = allBots[i].group.position; let posB = allBots[j].group.position;
                         let dx = posA.x - posB.x; let dz = posA.z - posB.z;
-                        let distSq = dx*dx + dz*dz;
-                        let separationDist = 3.0; 
-
+                        let distSq = dx*dx + dz*dz; let separationDist = 3.0;
                         if (distSq > 0.0001 && distSq < separationDist * separationDist) {
-                            let dist = Math.sqrt(distSq);
-                            let overlap = (separationDist - dist) * 0.5; 
+                            let dist = Math.sqrt(distSq); let overlap = (separationDist - dist) * 0.5; 
                             let pushX = (dx / dist) * overlap; let pushZ = (dz / dist) * overlap;
-
                             if (allBots[i].role !== 'myGoalie' && allBots[i].role !== 'oppGoalie') { posA.x += pushX; posA.z += pushZ; }
                             if (allBots[j].role !== 'myGoalie' && allBots[j].role !== 'oppGoalie') { posB.x -= pushX; posB.z -= pushZ; }
                         }
