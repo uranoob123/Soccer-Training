@@ -364,7 +364,7 @@
                     } else if (isPressing) { 
                         this.tacticalTarget.copy(pPos);
                         let distToPlayer = this.group.position.distanceTo(pPos);
-                        // Jockey if close, regardless of receiving pass
+                        // Jockey if close
                         if (distToPlayer < 4.0) {
                             targetSpeed = 3.0; 
                             this.tacticalTarget.z -= 1.0; 
@@ -406,8 +406,7 @@
                             // Trigger run if player looks at them, OR randomly based on time
                             let randomRun = (Math.sin(timeSec * 0.5 + this.id) > 0.85);
 
-                            // Penetrating runs can happen at any time, even before ball reaches player
-                            if ((toMe.angleTo(lookDir) < 0.6 || randomRun) && pPos.distanceTo(this.group.position) < 35) {
+                            if ((toMe.angleTo(lookDir) < 0.6 || randomRun) && pPos.distanceTo(this.group.position) < 35 && !isReceivingPass) {
                                 targetSpeed = this.maxSprint; 
                                 desiredZ = offsideLineZ + 0.5; // Ride the offside line
                             }
@@ -849,10 +848,17 @@
 
                     d.update(dt, timeSec, isBallInFlight, playerPos, shouldPress, offsideLineZ, yaw);
                     
-                    // Tackling logic maintains the !isReceivingPass protection
                     let dx = d.group.position.x - playerPos.x; let dz = d.group.position.z - playerPos.z;
-                    if (isRoundActive && !isReceivingPass && Math.sqrt(dx*dx + dz*dz) < 1.4) {
-                        triggerFeedback("ROUND OVER", "TACKLED BY DEFENDER", "#ff2222", 3000); playerVel.set(0, 0, 0);
+                    
+                    // --- PREVENT TACKLES WHEN BALL IS RELEASED OR BACK IS TURNED ---
+                    if (isRoundActive && !isReceivingPass && !isBallInFlight && Math.sqrt(dx*dx + dz*dz) < 1.4) {
+                        let playerForward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
+                        let toDefender = new THREE.Vector3(dx, 0, dz).normalize();
+                        
+                        // Shielding check: if angle is > 90 degrees (Math.PI / 2), back is facing them
+                        if (playerForward.angleTo(toDefender) <= Math.PI / 2) {
+                            triggerFeedback("ROUND OVER", "TACKLED BY DEFENDER", "#ff2222", 3000); playerVel.set(0, 0, 0);
+                        }
                     }
                 });
 
