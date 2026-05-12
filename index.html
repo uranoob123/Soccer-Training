@@ -78,12 +78,22 @@
     <div id="settings-overlay">
         <div id="settings-menu">
             <div class="menu-header">MATCH SETTINGS</div>
-            
+
             <div class="setting-row">
+                <label>Your Position</label>
+                <div class="toggle-container" style="margin-top: 10px;">
+                    <button class="toggle-btn active" id="btn-pos-rnd" onclick="setPosition('random')">ANY</button>
+                    <button class="toggle-btn" id="btn-pos-st" onclick="setPosition('st')">ST</button>
+                    <button class="toggle-btn" id="btn-pos-cm" onclick="setPosition('cm')">CM</button>
+                    <button class="toggle-btn" id="btn-pos-cb" onclick="setPosition('cb')">CB</button>
+                </div>
+            </div>
+            
+            <div class="setting-row" style="margin-top: 25px;">
                 <label>Time of Day</label>
-                <div class="toggle-container">
-                    <button class="toggle-btn" id="btn-day" onclick="setLighting('day')">DAY</button>
-                    <button class="toggle-btn active" id="btn-night" onclick="setLighting('night')">NIGHT</button>
+                <div class="toggle-container" style="margin-top: 10px;">
+                    <button class="toggle-btn active" id="btn-day" onclick="setLighting('day')">DAY</button>
+                    <button class="toggle-btn" id="btn-night" onclick="setLighting('night')">NIGHT</button>
                 </div>
             </div>
 
@@ -159,7 +169,8 @@
         ];
 
         // --- STATE & SETTINGS ---
-        let isPaused = false, timeOfDay = 'night', difficultyLevel = 70; 
+        let isPaused = false, timeOfDay = 'day', difficultyLevel = 70; 
+        let selectedPosition = 'random'; // New State for position choice
 
         // --- DOM ELEMENTS ---
         const diffSlider = document.getElementById('diff-slider');
@@ -178,8 +189,8 @@
 
         // --- SCENE SETUP ---
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x050a10);
-        scene.fog = new THREE.FogExp2(0x050a10, 0.005);
+        scene.background = new THREE.Color(0x87ceeb); // Default Day
+        scene.fog = new THREE.FogExp2(0x87ceeb, 0.005);
 
         const camera = new THREE.PerspectiveCamera(BASE_FOV, window.innerWidth / window.innerHeight, 0.1, 1000);
         let cameraTargetPos = new THREE.Vector3();
@@ -192,7 +203,7 @@
         document.body.appendChild(renderer.domElement);
 
         // --- LIGHTING ---
-        let ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        let ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
         scene.add(ambientLight);
         
         let sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
@@ -201,11 +212,12 @@
         sunLight.shadow.mapSize.width = 512; sunLight.shadow.mapSize.height = 512;
         sunLight.shadow.camera.left = -PW * 1.5; sunLight.shadow.camera.right = PW * 1.5;
         sunLight.shadow.camera.top = PL * 1.5; sunLight.shadow.camera.bottom = -PL * 1.5;
-        sunLight.visible = false; 
+        sunLight.visible = true; // Default Day
         scene.add(sunLight);
 
         let floodlight = new THREE.DirectionalLight(0xaaaaff, 1.2);
         floodlight.position.set(20, 60, 20); floodlight.castShadow = true;
+        floodlight.visible = false;
         scene.add(floodlight);
 
         window.setLighting = (type) => {
@@ -219,6 +231,14 @@
                 scene.background.setHex(0x050a10); scene.fog.color.setHex(0x050a10);
                 ambientLight.intensity = 0.5; sunLight.visible = false; floodlight.visible = true;
             }
+        };
+
+        window.setPosition = (pos) => {
+            selectedPosition = pos;
+            document.getElementById('btn-pos-rnd').classList.toggle('active', pos === 'random');
+            document.getElementById('btn-pos-st').classList.toggle('active', pos === 'st');
+            document.getElementById('btn-pos-cm').classList.toggle('active', pos === 'cm');
+            document.getElementById('btn-pos-cb').classList.toggle('active', pos === 'cb');
         };
 
         window.toggleSettings = () => {
@@ -340,7 +360,7 @@
                 scene.add(this.group);
             }
             
-            update(dt, timeSec, ballInFlight, pPos, isPressing = false, offsideLineZ = -75, playerYaw = 0) {
+            update(dt, timeSec, ballInFlight, pPos, isPressing = false, offsideLineZ = -75, playerYaw = 0, isClosestToBall = false) {
                 if (isPaused) return;
                 
                 let targetSpeed = this.baseSpeed; 
@@ -359,8 +379,15 @@
                     targetSpeed = 4.0 + (intensity * 6.5); 
                     
                     if (ballInFlight && ball) { 
-                        this.tacticalTarget.copy(ball.position); 
-                        targetSpeed = this.maxSprint; 
+                        // ONLY the closest defender chases the loose ball!
+                        if (isClosestToBall) {
+                            this.tacticalTarget.copy(ball.position); 
+                            targetSpeed = this.maxSprint; 
+                        } else {
+                            // Others track back to defend the goal line
+                            this.tacticalTarget.set(desiredX, 0, desiredZ - 5);
+                            targetSpeed = this.baseSpeed;
+                        }
                     } else if (isPressing) { 
                         this.tacticalTarget.copy(pPos);
                         let distToPlayer = this.group.position.distanceTo(pPos);
@@ -381,20 +408,28 @@
                     }
                 } 
                 else if (this.role === 'teammate') {
+                    let desiredX = atkOffsets[this.id].x;
+                    let desiredZ = pPos.z + atkOffsets[this.id].z;
+
+                    // Active Off-The-Ball Movement always enabled
+                    desiredX += Math.sin(timeSec * 0.9 + this.id) * 5.0; 
+                    desiredZ -= Math.cos(timeSec * 0.7 + this.id) * 5.0; 
+
                     if (ballInFlight && ball) {
                         if (this === aimedReceiver) {
                             this.tacticalTarget.copy(ball.position); 
                             if (typeof ballVel !== 'undefined') this.tacticalTarget.add(ballVel.clone().multiplyScalar(0.4)); 
                             targetSpeed = this.maxSprint; 
-                        } else { this.tacticalTarget.copy(this.group.position); }
+                        } else { 
+                            // Teammates DO NOT FREEZE! They continue their natural movement and runs.
+                            if (this.id < 3) {
+                                this.tacticalTarget.set(desiredX + (pPos.x * 0.2), 0, Math.max(pPos.z + 10, desiredZ));
+                            } else {
+                                let safeZ = Math.max(desiredZ, offsideLineZ + 1.0); 
+                                this.tacticalTarget.set(desiredX, 0, safeZ);
+                            }
+                        }
                     } else { 
-                        let desiredX = atkOffsets[this.id].x;
-                        let desiredZ = pPos.z + atkOffsets[this.id].z;
-
-                        // Active Off-The-Ball Movement always enabled
-                        desiredX += Math.sin(timeSec * 0.9 + this.id) * 5.0; 
-                        desiredZ -= Math.cos(timeSec * 0.7 + this.id) * 5.0; 
-
                         if (this.id < 3) {
                             // Rest Defense (CBs & DM stay back)
                             this.tacticalTarget.set(desiredX + (pPos.x * 0.2), 0, Math.max(pPos.z + 10, desiredZ));
@@ -515,34 +550,44 @@
             isBallInFlight = false; isCharging = false; isReceivingPass = true;
             playerVel.set(0,0,0); 
             
-            const zones = [
-                { name: "ATTACKING THIRD", color: "#ff2222", minZ: -40, maxZ: -20 },
-                { name: "MIDFIELD BATTLE", color: "#ffcc00", minZ: -10, maxZ: 10 },
-                { name: "DEFENSIVE BUILD-UP", color: "#00d4ff", minZ: 30, maxZ: 50 }
-            ];
+            const zones = {
+                'st': { name: "ATTACKING THIRD", color: "#ff2222", minZ: -35, maxZ: -15, roleId: 8 },
+                'cm': { name: "MIDFIELD BATTLE", color: "#ffcc00", minZ: -5, maxZ: 15, roleId: 6 },
+                'cb': { name: "DEFENSIVE BUILD-UP", color: "#00d4ff", minZ: 25, maxZ: 45, roleId: 1 }
+            };
             
-            const selectedZone = zones[Math.floor(Math.random() * zones.length)];
-            currentScenarioText = "SCENARIO // " + selectedZone.name;
-            currentScenarioColor = selectedZone.color;
+            let pRole = selectedPosition;
+            if (pRole === 'random') {
+                const roles = ['st', 'cm', 'cb'];
+                pRole = roles[Math.floor(Math.random() * roles.length)];
+            }
+            
+            const activeZone = zones[pRole];
+            currentScenarioText = "SCENARIO // " + activeZone.name;
+            currentScenarioColor = activeZone.color;
             
             const banner = document.getElementById('scenario-banner');
             banner.innerText = "SCENARIO // INCOMING PASS";
             banner.style.color = "#00d4ff";
             
-            let spawnZ = selectedZone.minZ + Math.random() * (selectedZone.maxZ - selectedZone.minZ);
-            playerPos.set((Math.random()-0.5)*20, 0, spawnZ); 
+            // Spawn player based on chosen tactical role
+            let spawnZ = activeZone.minZ + Math.random() * (activeZone.maxZ - activeZone.minZ);
+            playerPos.set(atkOffsets[activeZone.roleId].x + (Math.random()-0.5)*5, 0, spawnZ); 
 
             clearSceneEntities();
 
-            // Spawn 10 Outfielders (4-3-3 shape)
+            // Spawn Outfielders, replacing the AI in the slot you chose
             for(let i=0; i<10; i++) {
-                teammates.push(new PlayerBot(0x00ff88, 0xffffff, 'teammate', i)); 
-                defenders.push(new PlayerBot(0xff2222, 0x111111, 'defender', i));
+                if (i !== activeZone.roleId) {
+                    let t = new PlayerBot(0x00ff88, 0xffffff, 'teammate', i);
+                    t.group.position.set(atkOffsets[i].x, 0, playerPos.z + atkOffsets[i].z);
+                    teammates.push(t);
+                }
                 
-                // Initial physical placements
-                teammates[i].group.position.set(atkOffsets[i].x, 0, playerPos.z + atkOffsets[i].z);
+                let d = new PlayerBot(0xff2222, 0x111111, 'defender', i);
                 let dLine = Math.max(-PL + 5, playerPos.z - 20);
-                defenders[i].group.position.set(defOffsets[i].x, 0, dLine + defOffsets[i].z);
+                d.group.position.set(defOffsets[i].x, 0, dLine + defOffsets[i].z);
+                defenders.push(d);
             }
 
             let myGoalKeeper = new PlayerBot(0xff00ff, 0x111111, 'myGoalie', 10);
@@ -553,8 +598,8 @@
             oppGoalKeeper.baseZ = -PL + distOffLine;
             oppGoalKeeper.group.position.set(0, 0, oppGoalKeeper.baseZ);
             
-            // The Defensive Midfielder (Teammate 2) is the passer, stays behind player
-            let passer = teammates[2]; 
+            // The Defensive Midfielder (or fallback) is the passer
+            let passer = teammates.find(t => t.id === 2) || teammates.find(t => t.id === 5); 
             passer.group.position.set(playerPos.x + (Math.random() > 0.5 ? 5 : -5), 0, playerPos.z + 15);
             
             let pdx = passer.group.position.x - playerPos.x;
@@ -623,27 +668,59 @@
             let forwardProgression = playerDistToGoal - receiverDistToGoal;
             
             let closestDefDist = Infinity;
-            defenders.forEach(d => { let dDist = receiver.group.position.distanceTo(d.group.position); if (dDist < closestDefDist) closestDefDist = dDist; });
+            let playerClosestDefDist = Infinity;
+            
+            defenders.forEach(d => { 
+                let dDist = receiver.group.position.distanceTo(d.group.position); 
+                if (dDist < closestDefDist) closestDefDist = dDist; 
+                
+                let pDist = playerPos.distanceTo(d.group.position);
+                if (pDist < playerClosestDefDist) playerClosestDefDist = pDist;
+            });
 
             let linesBroken = 0;
             defenders.forEach(d => { if (d.group.position.z < playerPos.z && d.group.position.z > receiver.group.position.z) linesBroken++; });
 
             let rating = 0;
-            if (dist < 15) rating = Math.floor(Math.random() * 15) + 15; 
-            else if (forwardProgression < 0) rating = Math.floor(Math.random() * 20) + 30; 
-            else {
+            let subText = "VISION SCORE";
+
+            if (forwardProgression < 0) {
+                // --- BACKPASS LOGIC ---
+                if (playerClosestDefDist < 6.0 && closestDefDist > 5.0) {
+                    // Smart play: Under pressure, passed to an open safe option
+                    rating = Math.floor(Math.random() * 15) + 70; // 70-84
+                    subText = "SMART RECYCLING";
+                } else if (closestDefDist > 8.0) {
+                    // Safe possession, but no immediate pressure
+                    rating = Math.floor(Math.random() * 10) + 60; // 60-69
+                    subText = "SAFE POSSESSION";
+                } else {
+                    // Passed backwards into danger
+                    rating = Math.floor(Math.random() * 20) + 40; // 40-59
+                    subText = "POOR DECISION";
+                }
+            } else if (dist < 12) {
+                rating = Math.floor(Math.random() * 15) + 55; // 55-69 short sideways/forward pass
+                subText = "SIMPLE PLAY";
+            } else {
                 let rawScore = (forwardProgression * 2.0) + (linesBroken * 25.0) + (closestDefDist * 2.0);
                 if (idealScoreAtKick > 0) {
                     let ratio = Math.max(0, Math.min(1, rawScore / idealScoreAtKick));
                     rating = Math.floor(45 + (Math.pow(ratio, 2.5) * 50)); 
                 } else rating = 45; 
+                
+                if (linesBroken > 0 && rating > 75) subText = "DEFENSIVE LINES BROKEN";
             }
             
-            if (receiver === tacticalBestTeammate && rating >= 50) rating = Math.floor(Math.random() * 3) + 98; 
+            if (receiver === tacticalBestTeammate && rating >= 50) {
+                rating = Math.floor(Math.random() * 3) + 98; 
+                subText = "ELITE VISION";
+            }
+            
             if (receiver !== tacticalBestTeammate && tacticalBestTeammate) tacticalBestTeammate.shirtMat.color.setHex(0xffff00);
 
-            let color = rating >= 80 ? "#00ff88" : (rating >= 50 ? "#ffcc00" : "#ff4444");
-            triggerFeedback("RATING: " + rating, "VISION SCORE", color, 4000);
+            let color = rating >= 80 ? "#00ff88" : (rating >= 60 ? "#ffcc00" : "#ff4444");
+            triggerFeedback("RATING: " + rating, subText, color, 4000);
         }
 
         function evaluateShotResult(isGoal) {
@@ -755,6 +832,28 @@
                     playerPos.add(playerVel.clone().multiplyScalar(dt));
                     playerPos.x = Math.max(-PW + 1, Math.min(PW - 1, playerPos.x)); playerPos.z = Math.max(-PL + 1, Math.min(PL - 1, playerPos.z));
 
+                    // --- PLAYER vs AI COLLISION (Physicality / Shielding Block) ---
+                    let allBotsForPlayerCol = [...teammates, ...defenders];
+                    if (oppGoalKeeper) allBotsForPlayerCol.push(oppGoalKeeper);
+                    
+                    allBotsForPlayerCol.forEach(bot => {
+                        let dx = playerPos.x - bot.group.position.x;
+                        let dz = playerPos.z - bot.group.position.z;
+                        let distSq = dx*dx + dz*dz;
+                        let minPlayerDist = 1.3; // Distance at which you get blocked
+
+                        if (distSq < minPlayerDist * minPlayerDist && distSq > 0.0001) {
+                            let dist = Math.sqrt(distSq);
+                            let overlap = minPlayerDist - dist;
+                            playerPos.x += (dx / dist) * overlap;
+                            playerPos.z += (dz / dist) * overlap;
+                            
+                            // Kill player's momentum into the defender (acts like a solid wall)
+                            playerVel.x *= 0.5;
+                            playerVel.z *= 0.5;
+                        }
+                    });
+
                     let targetFOV = isSprinting && input.lengthSq() > 0 ? SPRINT_FOV : BASE_FOV;
                     camera.fov += (targetFOV - camera.fov) * 10 * dt; camera.updateProjectionMatrix();
                 }
@@ -769,6 +868,18 @@
                     if(chargeValue > 0.95) crosshair.style.transform = `translate(-50%, -50%) scale(${1 + Math.sin(timeSec*20)*0.3})`;
                 }
                 document.getElementById('power-bar').style.width = (chargeValue * 100) + "%";
+
+                let closestDefToBall = null;
+                let minBallDist = Infinity;
+                if (isBallInFlight && ball) {
+                    defenders.forEach(d => {
+                        let dist = d.group.position.distanceTo(ball.position);
+                        if (dist < minBallDist) {
+                            minBallDist = dist;
+                            closestDefToBall = d;
+                        }
+                    });
+                }
 
                 if (isBallInFlight && ball) {
                     ballVel.y -= GRAVITY * dt; ballVel.multiplyScalar(1 - (0.3 * dt)); 
@@ -836,26 +947,31 @@
 
                 let offsideLineZ = Math.min(playerPos.z, lastDefenderZ);
 
-                if (oppGoalKeeper) oppGoalKeeper.update(dt, timeSec, isBallInFlight, playerPos, false, offsideLineZ, yaw);
-                teammates.forEach(t => t.update(dt, timeSec, isBallInFlight, playerPos, false, offsideLineZ, yaw));
+                if (oppGoalKeeper) oppGoalKeeper.update(dt, timeSec, isBallInFlight, playerPos, false, offsideLineZ, yaw, false);
+                teammates.forEach(t => t.update(dt, timeSec, isBallInFlight, playerPos, false, offsideLineZ, yaw, false));
+                
                 defenders.forEach(d => { 
                     let shouldPress = false;
+                    let isClosestToBall = (d === closestDefToBall);
+
                     if (d === closestDef) {
                         if (d.id >= 7) shouldPress = true; 
                         else if (d.id >= 4 && playerPos.z < 15) shouldPress = true; 
                         else if (d.id < 4 && playerPos.z < -15) shouldPress = true; 
                     }
 
-                    d.update(dt, timeSec, isBallInFlight, playerPos, shouldPress, offsideLineZ, yaw);
+                    d.update(dt, timeSec, isBallInFlight, playerPos, shouldPress, offsideLineZ, yaw, isClosestToBall);
                     
                     let dx = d.group.position.x - playerPos.x; let dz = d.group.position.z - playerPos.z;
                     
                     // --- PREVENT TACKLES WHEN BALL IS RELEASED OR BACK IS TURNED ---
+                    // Note: Collision distance is now slightly larger than physical block (1.3), so if they get within 1.4 they can tackle IF you aren't shielding
                     if (isRoundActive && !isReceivingPass && !isBallInFlight && Math.sqrt(dx*dx + dz*dz) < 1.4) {
                         let playerForward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
                         let toDefender = new THREE.Vector3(dx, 0, dz).normalize();
                         
-                        // Shielding check: if angle is > 90 degrees (Math.PI / 2), back is facing them
+                        // Shielding check: if angle is <= 90 degrees (Math.PI / 2), you are facing them and get tackled
+                        // If angle is > 90 degrees, you are facing away (shielding), no tackle!
                         if (playerForward.angleTo(toDefender) <= Math.PI / 2) {
                             triggerFeedback("ROUND OVER", "TACKLED BY DEFENDER", "#ff2222", 3000); playerVel.set(0, 0, 0);
                         }
