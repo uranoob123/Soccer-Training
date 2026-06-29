@@ -56,12 +56,13 @@
 
         #feedback { 
             position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%);
-            display: none; z-index: 20; text-align: center; padding: 20px 80px; border-radius: 20px; 
-            background: rgba(10,10,15,0.9); border: 2px solid white; 
+            display: none; z-index: 20; text-align: center; padding: 25px 80px; border-radius: 20px; 
+            background: rgba(10,10,15,0.95); border: 2px solid white; 
             box-shadow: 0 20px 60px rgba(0,0,0,0.9), inset 0 0 30px rgba(255,255,255,0.05); backdrop-filter: blur(15px);
         }
         #fb-main { font-size: 4.5rem; font-weight: 900; font-style: italic; letter-spacing: 2px; line-height: 1; text-transform: uppercase; }
-        .feedback-sub { font-size: 1.2rem; font-weight: 700; color: #aaa; letter-spacing: 2px; margin-top: 15px; text-transform: uppercase; }
+        .feedback-sub { font-size: 1.2rem; font-weight: 700; color: #fff; letter-spacing: 2px; margin-top: 15px; text-transform: uppercase; }
+        #fb-details { font-size: 0.85rem; font-weight: 800; color: #888; margin-top: 12px; text-transform: uppercase; letter-spacing: 1.5px; }
         
         #overlay { position: absolute; inset: 0; background: radial-gradient(circle, transparent 50%, rgba(0,0,0,0.6) 100%); pointer-events: none; z-index: 5; }
     </style>
@@ -100,9 +101,9 @@
             <div class="setting-row">
                 <div class="label-flex">
                     <label>Defender Pressure</label>
-                    <span class="val-indicator" id="diff-val">70</span>
+                    <span class="val-indicator" id="diff-val">10</span>
                 </div>
-                <input type="range" id="diff-slider" min="1" max="300" value="70">
+                <input type="range" id="diff-slider" min="1" max="300" value="10">
             </div>
 
             <button class="toggle-btn active" style="margin-top:20px; width: 100%;" onclick="toggleSettings()">RESUME MATCH</button>
@@ -128,6 +129,7 @@
     <div id="feedback">
         <div id="fb-main">ELITE VISION</div>
         <div id="fb-sub" class="feedback-sub">DEFENSIVE LINES BROKEN</div>
+        <div id="fb-details">PROG: 20M | DRIVE: 10M | LINES: 2</div>
     </div>
 
     <script type="importmap"> { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } } </script>
@@ -169,8 +171,9 @@
         ];
 
         // --- STATE & SETTINGS ---
-        let isPaused = false, timeOfDay = 'day', difficultyLevel = 70; 
+        let isPaused = false, timeOfDay = 'day', difficultyLevel = 10; 
         let selectedPosition = 'random'; 
+        let currentDefensiveStyle = 'PRESS'; 
 
         // --- DOM ELEMENTS ---
         const diffSlider = document.getElementById('diff-slider');
@@ -182,6 +185,7 @@
         const fbContainer = document.getElementById('feedback');
         const fbMain = document.getElementById('fb-main');
         const fbSub = document.getElementById('fb-sub');
+        const fbDetails = document.getElementById('fb-details');
         const crosshair = document.getElementById('crosshair');
         const settingsOverlay = document.getElementById('settings-overlay');
 
@@ -307,7 +311,11 @@
         let ballVel = new THREE.Vector3(), isBallInFlight = false, isRoundActive = false;
         let isReceivingPass = false, currentScenarioText = "", currentScenarioColor = "";
         let aimedReceiver = null, tacticalBestTeammate = null, idealScoreAtKick = -Infinity;
-        let playerVel = new THREE.Vector3(), playerPos = new THREE.Vector3(0, 0, 20), playerPosAtKick = new THREE.Vector3();
+        
+        // POSITIONS FOR FEEDBACK CALCULATION
+        let playerVel = new THREE.Vector3(), playerPos = new THREE.Vector3(0, 0, 20);
+        let playerPosAtKick = new THREE.Vector3(), playerPosAtReceive = new THREE.Vector3();
+        
         let playerStamina = 100, isCharging = false, chargeValue = 0, yaw = 0, pitchRot = 0;
         let keys = { w: false, a: false, s: false, d: false, shift: false };
         let lastTime = performance.now(), matchClock = 20;
@@ -322,7 +330,6 @@
         const botLimbGeo = new THREE.BoxGeometry(0.2, 0.7, 0.2); 
         const botHeadGeo = new THREE.SphereGeometry(0.22, 8, 8); 
 
-        // --- REALISTIC 11v11 DYNAMIC BOT CLASS ---
         class PlayerBot {
             constructor(primaryColor, secondaryColor, role, idOffset) {
                 this.group = new THREE.Group();
@@ -364,45 +371,43 @@
                 let targetSpeed = this.baseSpeed; 
                 let intensity = difficultyLevel / 100; 
 
-                // --- 1. FORMATION & DYNAMIC SHUFFLING LOGIC ---
                 if (this.role === 'defender') {
-                    let defLineZ = Math.max(-PL + 5, pPos.z - 20);
+                    let defLineZ = Math.max(-PL + 5, pPos.z - 15);
+                    
+                    if (currentDefensiveStyle === 'SPACE') {
+                        defLineZ -= 15; 
+                    }
+
                     let desiredX = defOffsets[this.id].x + (pPos.x * 0.15); 
                     let desiredZ = defLineZ + defOffsets[this.id].z;
 
-                    // Always shuffle and drift, even before pass is received
                     desiredX += Math.sin(timeSec * 1.1 + this.id) * 3.0; 
                     desiredZ += Math.cos(timeSec * 0.8 + this.id) * 3.0; 
 
                     targetSpeed = 4.0 + (intensity * 6.5); 
                     
                     if (ballInFlight && ball) { 
-                        // ONLY the closest defender chases the loose ball!
                         if (isClosestToBall) {
                             this.tacticalTarget.copy(ball.position); 
                             targetSpeed = this.maxSprint; 
                         } else {
-                            // Others track back to defend the goal line
                             this.tacticalTarget.set(desiredX, 0, desiredZ - 5);
                             targetSpeed = this.baseSpeed;
                         }
                     } else if (isPressing) { 
                         this.tacticalTarget.copy(pPos);
                         let distToPlayer = this.group.position.distanceTo(pPos);
-                        // Make them aggressively step in to tackle/block
-                        if (distToPlayer < 3.0) {
-                            targetSpeed = this.baseSpeed; 
-                        } else { 
-                            targetSpeed += (intensity * 6.0); 
-                        }
+                        if (distToPlayer < 4.0) {
+                            targetSpeed = 3.0; 
+                            this.tacticalTarget.z -= 1.0; 
+                        } else { targetSpeed += (intensity * 5.0); }
                     } else {
                         this.tacticalTarget.set(desiredX, 0, desiredZ);
-                        
-                        // Step into passing lanes if ball carrier gets too close (DO NOT back up)
                         let distToPlayer = this.group.position.distanceTo(pPos);
+                        
                         if (distToPlayer < 15.0) {
                             this.tacticalTarget.x = pPos.x + (this.id % 2 === 0 ? -3 : 3);
-                            this.tacticalTarget.z = desiredZ; 
+                            this.tacticalTarget.z = pPos.z - 5;
                         }
                     }
                 } 
@@ -410,7 +415,6 @@
                     let desiredX = atkOffsets[this.id].x;
                     let desiredZ = pPos.z + atkOffsets[this.id].z;
 
-                    // Active Off-The-Ball Movement always enabled
                     desiredX += Math.sin(timeSec * 0.9 + this.id) * 5.0; 
                     desiredZ -= Math.cos(timeSec * 0.7 + this.id) * 5.0; 
 
@@ -429,19 +433,15 @@
                         }
                     } else { 
                         if (this.id < 3) {
-                            // Rest Defense (CBs & DM stay back)
                             this.tacticalTarget.set(desiredX + (pPos.x * 0.2), 0, Math.max(pPos.z + 10, desiredZ));
                         } else {
-                            // Penetrating Runs for attackers
                             let toMe = new THREE.Vector3().subVectors(this.group.position, pPos).normalize();
                             let lookDir = new THREE.Vector3(0,0,-1).applyAxisAngle(new THREE.Vector3(0,1,0), playerYaw);
-                            
-                            // Trigger run if player looks at them, OR randomly based on time
                             let randomRun = (Math.sin(timeSec * 0.5 + this.id) > 0.85);
 
                             if ((toMe.angleTo(lookDir) < 0.6 || randomRun) && pPos.distanceTo(this.group.position) < 35 && !isReceivingPass) {
                                 targetSpeed = this.maxSprint; 
-                                desiredZ = offsideLineZ + 0.5; // Ride the offside line
+                                desiredZ = offsideLineZ + 0.5; 
                             }
                             let safeZ = Math.max(desiredZ, offsideLineZ + 1.0); 
                             this.tacticalTarget.set(desiredX, 0, safeZ);
@@ -465,7 +465,6 @@
 
                 this.tacticalTarget.y = 0; 
                 
-                // --- 2. INERTIA & ROTATION ---
                 let direction = new THREE.Vector3().subVectors(this.tacticalTarget, this.group.position);
                 let distToTarget = direction.length();
                 
@@ -561,20 +560,21 @@
             }
             
             const activeZone = zones[pRole];
-            currentScenarioText = "SCENARIO // " + activeZone.name;
+            currentDefensiveStyle = Math.random() > 0.5 ? 'PRESS' : 'SPACE';
+            currentScenarioText = "SCENARIO // " + activeZone.name + " (" + currentDefensiveStyle + ")";
             currentScenarioColor = activeZone.color;
             
             const banner = document.getElementById('scenario-banner');
             banner.innerText = "SCENARIO // INCOMING PASS";
             banner.style.color = "#00d4ff";
             
-            // Spawn player based on chosen tactical role
             let spawnZ = activeZone.minZ + Math.random() * (activeZone.maxZ - activeZone.minZ);
             playerPos.set(atkOffsets[activeZone.roleId].x + (Math.random()-0.5)*5, 0, spawnZ); 
 
             clearSceneEntities();
 
-            // Spawn Outfielders, replacing the AI in the slot you chose
+            let defLineDrop = currentDefensiveStyle === 'SPACE' ? 15 : 0;
+
             for(let i=0; i<10; i++) {
                 if (i !== activeZone.roleId) {
                     let t = new PlayerBot(0x00ff88, 0xffffff, 'teammate', i);
@@ -583,7 +583,7 @@
                 }
                 
                 let d = new PlayerBot(0xff2222, 0x111111, 'defender', i);
-                let dLine = Math.max(-PL + 5, playerPos.z - 20);
+                let dLine = Math.max(-PL + 5, playerPos.z - 15 - defLineDrop);
                 d.group.position.set(defOffsets[i].x, 0, dLine + defOffsets[i].z);
                 defenders.push(d);
             }
@@ -596,7 +596,6 @@
             oppGoalKeeper.baseZ = -PL + distOffLine;
             oppGoalKeeper.group.position.set(0, 0, oppGoalKeeper.baseZ);
             
-            // The Defensive Midfielder (or fallback) is the passer
             let passer = teammates.find(t => t.id === 2) || teammates.find(t => t.id === 5); 
             passer.group.position.set(playerPos.x + (Math.random() > 0.5 ? 5 : -5), 0, playerPos.z + 15);
             
@@ -648,9 +647,10 @@
             crosshair.style.transform = 'translate(-50%, -50%) scale(1)';
         }
 
-        function triggerFeedback(mainText, subText, color, delay = 3500) {
+        function triggerFeedback(mainText, subText, detailsText, color, delay = 3500) {
             if (!isRoundActive) return; isRoundActive = false; 
             fbMain.innerText = mainText; fbSub.innerText = subText;
+            fbDetails.innerText = detailsText;
             fbContainer.style.borderColor = color; fbMain.style.color = color;
             fbContainer.style.boxShadow = `0 20px 60px rgba(0,0,0,0.9), inset 0 0 30px ${color}33`;
             fbContainer.style.display = 'block';
@@ -659,14 +659,13 @@
 
         function evaluatePassResult(receiver) {
             let oppGoalZ = -PL; 
-            let dx = playerPos.x - receiver.group.position.x; let dz = playerPos.z - receiver.group.position.z;
-            let dist = Math.sqrt(dx*dx + dz*dz);
-            let receiverDistToGoal = Math.abs(receiver.group.position.z - oppGoalZ);
-            let playerDistToGoal = Math.abs(playerPos.z - oppGoalZ);
-            let forwardProgression = playerDistToGoal - receiverDistToGoal;
+            let forwardProgression = playerPos.z - receiver.group.position.z;
+            let driveDist = playerPosAtReceive.z - playerPosAtKick.z; // How far you dribbled forward
+            if (driveDist < 0) driveDist = 0;
             
             let closestDefDist = Infinity;
             let playerClosestDefDist = Infinity;
+            let closestGoalSideDist = Infinity;
             
             defenders.forEach(d => { 
                 let dDist = receiver.group.position.distanceTo(d.group.position); 
@@ -674,48 +673,72 @@
                 
                 let pDist = playerPos.distanceTo(d.group.position);
                 if (pDist < playerClosestDefDist) playerClosestDefDist = pDist;
+                
+                if (d.group.position.z < playerPos.z && pDist < closestGoalSideDist) {
+                    closestGoalSideDist = pDist;
+                }
             });
 
             let linesBroken = 0;
             defenders.forEach(d => { if (d.group.position.z < playerPos.z && d.group.position.z > receiver.group.position.z) linesBroken++; });
 
             let rating = 0;
-            let subText = "VISION SCORE";
+            let subText = "";
+            let details = [];
+
+            // BASE RATING CALCULATION
+            let rawScore = (forwardProgression * 2.0) + (linesBroken * 25.0) + (closestDefDist * 2.0);
+            if (idealScoreAtKick > 0) {
+                let ratio = Math.max(0, Math.min(1, rawScore / idealScoreAtKick));
+                rating = Math.floor(45 + (Math.pow(ratio, 2.5) * 50)); 
+            } else rating = 45; 
+
+            // THE "EVERYTHING" FEEDBACK PENALTIES/BONUSES
+            if (closestGoalSideDist > 12.0 && linesBroken === 0 && forwardProgression < 15) {
+                // Defender gave space, but player did not drive into it
+                rating -= 20;
+                subText = "COWARDLY PASS";
+                details.push("FAILED TO DRIVE INTO SPACE (-20)");
+            } else if (closestGoalSideDist > 12.0 && driveDist < 5.0) {
+                rating -= 15;
+                details.push("DID NOT MAXIMIZE SPACE (-15)");
+            } else if (driveDist > 8.0) {
+                rating += 10;
+                details.push("GREAT DRIVE (+10)");
+            }
 
             if (forwardProgression < 0) {
-                // --- BACKPASS LOGIC ---
                 if (playerClosestDefDist < 6.0 && closestDefDist > 5.0) {
-                    rating = Math.floor(Math.random() * 15) + 70; // 70-84
+                    rating = Math.max(rating, 70);
                     subText = "SMART RECYCLING";
-                } else if (closestDefDist > 8.0) {
-                    rating = Math.floor(Math.random() * 10) + 60; // 60-69
-                    subText = "SAFE POSSESSION";
                 } else {
-                    rating = Math.floor(Math.random() * 20) + 40; // 40-59
+                    rating = Math.min(rating, 40);
                     subText = "POOR DECISION";
                 }
-            } else if (dist < 12) {
-                rating = Math.floor(Math.random() * 15) + 55; // 55-69 short sideways/forward pass
-                subText = "SIMPLE PLAY";
-            } else {
-                let rawScore = (forwardProgression * 2.0) + (linesBroken * 25.0) + (closestDefDist * 2.0);
-                if (idealScoreAtKick > 0) {
-                    let ratio = Math.max(0, Math.min(1, rawScore / idealScoreAtKick));
-                    rating = Math.floor(45 + (Math.pow(ratio, 2.5) * 50)); 
-                } else rating = 45; 
-                
-                if (linesBroken > 0 && rating > 75) subText = "DEFENSIVE LINES BROKEN";
+            }
+
+            // Clamp Rating
+            rating = Math.max(0, Math.min(99, rating));
+            
+            if (!subText) {
+                if (rating >= 80) subText = "ELITE VISION";
+                else if (rating >= 60) subText = "GOOD DECISION";
+                else subText = "SAFE BUT AVERAGE";
             }
             
-            if (receiver === tacticalBestTeammate && rating >= 50) {
-                rating = Math.floor(Math.random() * 3) + 98; 
-                subText = "ELITE VISION";
+            if (receiver === tacticalBestTeammate && rating >= 70) {
+                rating = Math.floor(Math.random() * 3) + 97; 
+                subText = "PERFECT PLAY";
             }
             
             if (receiver !== tacticalBestTeammate && tacticalBestTeammate) tacticalBestTeammate.shirtMat.color.setHex(0xffff00);
 
+            details.push(`PROG: ${Math.round(forwardProgression)}m`);
+            details.push(`DRIVE: ${Math.round(driveDist)}m`);
+            details.push(`LINES: ${linesBroken}`);
+
             let color = rating >= 80 ? "#00ff88" : (rating >= 60 ? "#ffcc00" : "#ff4444");
-            triggerFeedback("RATING: " + rating, subText, color, 4000);
+            triggerFeedback("RATING: " + rating, subText, details.join("  |  "), color, 4500);
         }
 
         function evaluateShotResult(isGoal) {
@@ -739,10 +762,9 @@
             if (tacticalBestTeammate && elitePassAvailable && distToGoal > 25 && !isGoal) {
                 tacticalBestTeammate.shirtMat.color.setHex(0xffff00); 
             }
-            triggerFeedback(mainText, subText, color, 4500);
+            triggerFeedback(mainText, subText, `DIST: ${Math.round(distToGoal)}m`, color, 4500);
         }
 
-        // --- INPUT HANDLING ---
         window.addEventListener('keydown', e => { 
             if(e.code === 'Escape') { toggleSettings(); return; }
             if(isPaused) return;
@@ -768,7 +790,6 @@
             if (!isPaused) document.body.requestPointerLock(); 
         });
 
-        // --- MAIN GAME LOOP ---
         function animate(now) {
             requestAnimationFrame(animate);
             let dt = Math.min((now - lastTime) / 1000, 0.05); lastTime = now;
@@ -799,6 +820,10 @@
                         ballVel.z += (desired.z - ballVel.z) * dt * 5.0;
                     } else if (ball.position.y < 1.5) {
                         scene.remove(ball); ball = null; isReceivingPass = false;
+                        
+                        // NEW: MARK POSITION WHEN BALL IS CAUGHT
+                        playerPosAtReceive.copy(playerPos);
+                        
                         const banner = document.getElementById('scenario-banner');
                         banner.innerText = currentScenarioText; banner.style.color = currentScenarioColor;
                     }
@@ -807,7 +832,7 @@
                 if (!isBallInFlight) {
                     if (!isReceivingPass) {
                         matchClock -= dt; 
-                        if (matchClock <= 0) triggerFeedback("TIME EXPIRED", "HELD BALL TOO LONG", "#ff2222");
+                        if (matchClock <= 0) triggerFeedback("TIME EXPIRED", "HELD BALL TOO LONG", `HELD FOR: 20.0s`, "#ff2222");
                     }
 
                     let input = new THREE.Vector3();
@@ -826,28 +851,6 @@
 
                     playerPos.add(playerVel.clone().multiplyScalar(dt));
                     playerPos.x = Math.max(-PW + 1, Math.min(PW - 1, playerPos.x)); playerPos.z = Math.max(-PL + 1, Math.min(PL - 1, playerPos.z));
-
-                    // --- PLAYER vs AI COLLISION (Physicality / Shielding Block) ---
-                    let allBotsForPlayerCol = [...teammates, ...defenders];
-                    if (oppGoalKeeper) allBotsForPlayerCol.push(oppGoalKeeper);
-                    
-                    allBotsForPlayerCol.forEach(bot => {
-                        let dx = playerPos.x - bot.group.position.x;
-                        let dz = playerPos.z - bot.group.position.z;
-                        let distSq = dx*dx + dz*dz;
-                        let minPlayerDist = 1.3; // Distance at which you get blocked
-
-                        if (distSq < minPlayerDist * minPlayerDist && distSq > 0.0001) {
-                            let dist = Math.sqrt(distSq);
-                            let overlap = minPlayerDist - dist;
-                            playerPos.x += (dx / dist) * overlap;
-                            playerPos.z += (dz / dist) * overlap;
-                            
-                            // Kill player's momentum into the defender (acts like a solid wall)
-                            playerVel.x *= 0.5;
-                            playerVel.z *= 0.5;
-                        }
-                    });
 
                     let targetFOV = isSprinting && input.lengthSq() > 0 ? SPRINT_FOV : BASE_FOV;
                     camera.fov += (targetFOV - camera.fov) * 10 * dt; camera.updateProjectionMatrix();
@@ -900,13 +903,13 @@
                         }
                         evaluateShotResult(isGoal);
                     } else if (Math.abs(ball.position.x) >= PW || ball.position.z >= PL) {
-                        passCompleted = true; triggerFeedback("OUT OF BOUNDS", "WASTED POSSESSION", "#ff4444");
+                        passCompleted = true; triggerFeedback("OUT OF BOUNDS", "WASTED POSSESSION", "", "#ff4444");
                     }
 
                     if (oppGoalKeeper && !passCompleted && ball.position.distanceTo(oppGoalKeeper.group.position) < 2.2 && ball.position.y < 3.0) {
                         passCompleted = true; ballVel.set(0, 0, 0);
                         ball.position.copy(oppGoalKeeper.group.position); ball.position.y = BALL_RADIUS; ball.position.z += 0.6; 
-                        triggerFeedback("SAVED!", "KEEPER DENIES YOU", "#ffcc00");
+                        triggerFeedback("SAVED!", "KEEPER DENIES YOU", "", "#ffcc00");
                     }
 
                     teammates.forEach(t => {
@@ -922,12 +925,12 @@
                         if (!passCompleted && ball.position.distanceTo(d.group.position) < 2.0 && ball.position.y < 2.5) {
                             passCompleted = true; ballVel.set(0, 0, 0);
                             ball.position.copy(d.group.position); ball.position.y = BALL_RADIUS; ball.position.z -= 0.6; 
-                            triggerFeedback("INTERCEPTED", "POOR DECISION", "#ff2222");
+                            triggerFeedback("INTERCEPTED", "POOR DECISION", "", "#ff2222");
                         }
                     });
 
                     if (!passCompleted && ballVel.length() < 0.5 && ball.position.y <= BALL_RADIUS + 0.1) {
-                        triggerFeedback("DEAD BALL", "DID NOT REACH TARGET", "#aaa");
+                        triggerFeedback("DEAD BALL", "DID NOT REACH TARGET", "", "#aaa");
                     }
                 }
 
@@ -954,15 +957,17 @@
                     let shouldPress = false;
                     let isClosestToBall = (d === closestDefToBall);
 
-                    // 1. Closest always presses
-                    if (d === closestDef) shouldPress = true;
+                    if (d === closestDef) {
+                        let engagementDist = currentDefensiveStyle === 'SPACE' ? 15 : Infinity;
+                        if (d.group.position.distanceTo(playerPos) < engagementDist) {
+                            shouldPress = true;
+                        }
+                    }
 
-                    // 2. If closest is beaten, next goal-side steps up!
                     if (closestDef && closestDef.group.position.z > playerPos.z + 0.5) {
                         if (d === closestGoalSideDef) shouldPress = true;
                     }
 
-                    // 3. Double team if very close
                     let distToPlayer = d.group.position.distanceTo(playerPos);
                     if (distToPlayer < 8.0 && d.group.position.z < playerPos.z + 1.0) {
                         shouldPress = true;
@@ -970,42 +975,12 @@
 
                     d.update(dt, timeSec, isBallInFlight, playerPos, shouldPress, offsideLineZ, yaw, isClosestToBall);
                     
-                    let dx = d.group.position.x - playerPos.x; let dz = d.group.position.z - playerPos.z;
-                    
-                    // --- PREVENT TACKLES WHEN BALL IS RELEASED OR BACK IS TURNED ---
-                    if (isRoundActive && !isReceivingPass && !isBallInFlight && Math.sqrt(dx*dx + dz*dz) < 1.4) {
-                        let playerForward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
-                        let toDefender = new THREE.Vector3(dx, 0, dz).normalize();
-                        
-                        // Shielding check: if angle is <= 90 degrees (Math.PI / 2), you are facing them and get tackled
-                        if (playerForward.angleTo(toDefender) <= Math.PI / 2) {
-                            triggerFeedback("ROUND OVER", "TACKLED BY DEFENDER", "#ff2222", 3000); playerVel.set(0, 0, 0);
-                        }
+                    // IMMUNITY AFTER RELEASE: Tackle only counts if you actually have the ball
+                    if (distToPlayer < 1.2 && !isBallInFlight && !isReceivingPass) {
+                        let heldTime = (20.0 - matchClock).toFixed(1);
+                        triggerFeedback("TACKLED!", "DEFENDER CAUGHT YOU", `HELD BALL FOR: ${heldTime}s`, "#ff2222");
                     }
                 });
-
-                // --- BOT COLLISION & SEPARATION LOGIC ---
-                let allBots = [...teammates, ...defenders];
-                if (oppGoalKeeper) allBots.push(oppGoalKeeper);
-
-                for (let i = 0; i < allBots.length; i++) {
-                    for (let j = i + 1; j < allBots.length; j++) {
-                        let posA = allBots[i].group.position;
-                        let posB = allBots[j].group.position;
-                        let dx = posA.x - posB.x; let dz = posA.z - posB.z;
-                        let distSq = dx*dx + dz*dz;
-                        let separationDist = 3.0; 
-
-                        if (distSq > 0.0001 && distSq < separationDist * separationDist) {
-                            let dist = Math.sqrt(distSq);
-                            let overlap = (separationDist - dist) * 0.5; 
-                            let pushX = (dx / dist) * overlap; let pushZ = (dz / dist) * overlap;
-
-                            if (allBots[i].role !== 'myGoalie' && allBots[i].role !== 'oppGoalie') { posA.x += pushX; posA.z += pushZ; }
-                            if (allBots[j].role !== 'myGoalie' && allBots[j].role !== 'oppGoalie') { posB.x -= pushX; posB.z -= pushZ; }
-                        }
-                    }
-                }
             }
 
             let idealCamPos = playerPos.clone().add(new THREE.Vector3(0, 1.8, 0));
