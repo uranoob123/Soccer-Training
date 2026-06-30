@@ -132,9 +132,11 @@
         <div id="fb-details">PROG: 20M | DRIVE: 10M | LINES: 2</div>
     </div>
 
-    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+    <script type="importmap"> { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } } </script>
 
-    <script>
+    <script type="module">
+        import * as THREE from 'three';
+
         // --- GAME CONSTANTS ---
         const GRAVITY = 9.81, RESTITUTION = 0.75, ROLLING_FRICTION = 0.96; 
         const PW = 50, PL = 75; 
@@ -319,6 +321,7 @@
         let playerStamina = 100, isCharging = false, chargeValue = 0, yaw = 0, pitchRot = 0;
         let keys = { w: false, a: false, s: false, d: false, shift: false };
         let lastTime = performance.now(), matchClock = 20;
+        let tackleImmunityTimer = 0; // Prevent instant tackles when gaining the ball
 
         // SEQUENCE TRACKING STATE
         let currentPossessionPasses = [];
@@ -547,7 +550,7 @@
         }
 
         function resetGame() {
-            matchClock = 20.0; playerStamina = 100; chargeValue = 0;
+            matchClock = 20.0; playerStamina = 100; chargeValue = 0; tackleImmunityTimer = 0;
             isBallInFlight = false; isCharging = false; isReceivingPass = true;
             playerVel.set(0,0,0); 
 
@@ -723,6 +726,7 @@
             playerVel.set(0, 0, 0);
 
             playerPosAtReceive.copy(playerPos);
+            tackleImmunityTimer = 1.0; // Give 1 second immunity after passing and switching control
 
             matchClock = 20.0;
             chargeValue = 0;
@@ -861,6 +865,7 @@
             camera.rotation.set(pitchRot, yaw, 0, 'YXZ');
             
             if (isRoundActive) {
+                if (tackleImmunityTimer > 0) tackleImmunityTimer -= dt;
                 
                 if (isReceivingPass && ball) {
                     ballVel.y -= GRAVITY * dt;
@@ -882,6 +887,7 @@
                     } else if (ball.position.y < 1.5) {
                         scene.remove(ball); ball = null; isReceivingPass = false;
                         playerPosAtReceive.copy(playerPos);
+                        tackleImmunityTimer = 1.0; // Give 1 second immunity after receiving initial pass
                         
                         const banner = document.getElementById('scenario-banner');
                         banner.innerText = currentScenarioText; banner.style.color = currentScenarioColor;
@@ -892,27 +898,31 @@
                     if (!isReceivingPass) {
                         matchClock -= dt; 
                         if (matchClock <= 0) triggerFeedback("TIME EXPIRED", "HELD BALL TOO LONG", `HELD FOR: 20.0s`, "#ff2222");
-                    }
 
-                    let input = new THREE.Vector3();
-                    if (keys.w) input.z -= 1; if (keys.s) input.z += 1;
-                    if (keys.a) input.x -= 1; if (keys.d) input.x += 1;
-                    if (input.lengthSq() > 0) input.normalize().applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
+                        let input = new THREE.Vector3();
+                        if (keys.w) input.z -= 1; if (keys.s) input.z += 1;
+                        if (keys.a) input.x -= 1; if (keys.d) input.x += 1;
+                        if (input.lengthSq() > 0) input.normalize().applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
 
-                    let isSprinting = keys.shift && playerStamina > 0; let accel = isSprinting ? 28 : 15; let maxSpd = isSprinting ? 14 : 7;
+                        let isSprinting = keys.shift && playerStamina > 0; let accel = isSprinting ? 28 : 15; let maxSpd = isSprinting ? 14 : 7;
 
-                    if (input.lengthSq() > 0) {
-                        playerVel.add(input.multiplyScalar(accel * dt)); playerVel.clampLength(0, maxSpd);
-                        if (isSprinting) playerStamina = Math.max(0, playerStamina - 30 * dt);
+                        if (input.lengthSq() > 0) {
+                            playerVel.add(input.multiplyScalar(accel * dt)); playerVel.clampLength(0, maxSpd);
+                            if (isSprinting) playerStamina = Math.max(0, playerStamina - 30 * dt);
+                        } else {
+                            playerVel.multiplyScalar(Math.pow(0.005, dt)); playerStamina = Math.min(100, playerStamina + 15 * dt);
+                        }
+
+                        let targetFOV = isSprinting && input.lengthSq() > 0 ? SPRINT_FOV : BASE_FOV;
+                        camera.fov += (targetFOV - camera.fov) * 10 * dt; camera.updateProjectionMatrix();
                     } else {
-                        playerVel.multiplyScalar(Math.pow(0.005, dt)); playerStamina = Math.min(100, playerStamina + 15 * dt);
+                        // Keep player perfectly static while waiting for incoming pass control
+                        playerVel.set(0, 0, 0);
+                        camera.fov += (BASE_FOV - camera.fov) * 10 * dt; camera.updateProjectionMatrix();
                     }
 
                     playerPos.add(playerVel.clone().multiplyScalar(dt));
                     playerPos.x = Math.max(-PW + 1, Math.min(PW - 1, playerPos.x)); playerPos.z = Math.max(-PL + 1, Math.min(PL - 1, playerPos.z));
-
-                    let targetFOV = isSprinting && input.lengthSq() > 0 ? SPRINT_FOV : BASE_FOV;
-                    camera.fov += (targetFOV - camera.fov) * 10 * dt; camera.updateProjectionMatrix();
                 }
 
                 document.getElementById('timer-bar').style.width = Math.max(0, matchClock/20*100) + "%";
@@ -1041,7 +1051,8 @@
 
                     d.update(dt, timeSec, isBallInFlight, playerPos, shouldPress, offsideLineZ, yaw, isClosestToBall);
                     
-                    if (distToPlayer < 1.2 && !isBallInFlight && !isReceivingPass) {
+                    // Added check for tackleImmunityTimer to prevent instantaneous tackles on acquisition
+                    if (distToPlayer < 1.2 && !isBallInFlight && !isReceivingPass && tackleImmunityTimer <= 0) {
                         let heldTime = (20.0 - matchClock).toFixed(1);
                         triggerFeedback("TACKLED!", "DEFENDER CAUGHT YOU", `HELD BALL FOR: ${heldTime}s`, "#ff2222");
                     }
