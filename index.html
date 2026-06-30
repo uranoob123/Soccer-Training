@@ -132,11 +132,9 @@
         <div id="fb-details">PROG: 20M | DRIVE: 10M | LINES: 2</div>
     </div>
 
-    <script type="importmap"> { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } } </script>
+    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 
-    <script type="module">
-        import * as THREE from 'three';
-
+    <script>
         // --- GAME CONSTANTS ---
         const GRAVITY = 9.81, RESTITUTION = 0.75, ROLLING_FRICTION = 0.96; 
         const PW = 50, PL = 75; 
@@ -174,6 +172,8 @@
         let isPaused = false, timeOfDay = 'day', difficultyLevel = 10; 
         let selectedPosition = 'random'; 
         let currentDefensiveStyle = 'PRESS'; 
+        let playerTacticalId = 8;
+        let playerRole = 'teammate';
 
         // --- DOM ELEMENTS ---
         const diffSlider = document.getElementById('diff-slider');
@@ -319,6 +319,10 @@
         let playerStamina = 100, isCharging = false, chargeValue = 0, yaw = 0, pitchRot = 0;
         let keys = { w: false, a: false, s: false, d: false, shift: false };
         let lastTime = performance.now(), matchClock = 20;
+
+        // SEQUENCE TRACKING STATE
+        let currentPossessionPasses = [];
+        let currentPassRecord = null;
 
         // --- GLOBAL SHARED GEOMETRIES ---
         const ballGeo = new THREE.IcosahedronGeometry(BALL_RADIUS, 1);
@@ -546,6 +550,10 @@
             matchClock = 20.0; playerStamina = 100; chargeValue = 0;
             isBallInFlight = false; isCharging = false; isReceivingPass = true;
             playerVel.set(0,0,0); 
+
+            // Clear absolute sequence pass history
+            currentPossessionPasses = [];
+            currentPassRecord = null;
             
             const zones = {
                 'st': { name: "ATTACKING THIRD", color: "#ff2222", minZ: -35, maxZ: -15, roleId: 8 },
@@ -560,6 +568,8 @@
             }
             
             const activeZone = zones[pRole];
+            playerTacticalId = activeZone.roleId;
+            playerRole = 'teammate';
             currentDefensiveStyle = Math.random() > 0.5 ? 'PRESS' : 'SPACE';
             currentScenarioText = "SCENARIO // " + activeZone.name + " (" + currentDefensiveStyle + ")";
             currentScenarioColor = activeZone.color;
@@ -576,7 +586,7 @@
             let defLineDrop = currentDefensiveStyle === 'SPACE' ? 15 : 0;
 
             for(let i=0; i<10; i++) {
-                if (i !== activeZone.roleId) {
+                if (i !== playerTacticalId) {
                     let t = new PlayerBot(0x00ff88, 0xffffff, 'teammate', i);
                     t.group.position.set(atkOffsets[i].x, 0, playerPos.z + atkOffsets[i].z);
                     teammates.push(t);
@@ -636,6 +646,40 @@
                 }
             });
 
+            // Calculate target details to evaluate the quality of this choice
+            let chosenLinesBroken = 0;
+            let chosenForwardProgression = 0;
+            let chosenScore = 0;
+            if (aimedReceiver) {
+                const oppGoalZ = -PL;
+                let dx = playerPos.x - aimedReceiver.group.position.x; let dz = playerPos.z - aimedReceiver.group.position.z;
+                let distToPlayer = Math.sqrt(dx*dx + dz*dz);
+                let receiverDistToGoal = Math.abs(aimedReceiver.group.position.z - oppGoalZ);
+                let playerDistToGoal = Math.abs(playerPos.z - oppGoalZ);
+                chosenForwardProgression = playerDistToGoal - receiverDistToGoal;
+                
+                let closestDefDist = Infinity;
+                defenders.forEach(d => {
+                    let dDist = aimedReceiver.group.position.distanceTo(d.group.position); if (dDist < closestDefDist) closestDefDist = dDist;
+                });
+                defenders.forEach(d => { if (d.group.position.z < playerPos.z && d.group.position.z > aimedReceiver.group.position.z) chosenLinesBroken++; });
+
+                if (distToPlayer < 15) chosenScore = -1000; 
+                else if (chosenForwardProgression < 0) chosenScore = -500; 
+                else { chosenScore = chosenForwardProgression * 2.0 + chosenLinesBroken * 25.0 + closestDefDist * 2.0; }
+            }
+
+            // Create temporary tracking object for the active flight
+            currentPassRecord = {
+                aimedReceiver: aimedReceiver,
+                chosenScore: chosenScore,
+                maxScore: evaluation.score,
+                forwardProgression: chosenForwardProgression,
+                linesBroken: chosenLinesBroken,
+                completed: false,
+                intercepted: false
+            };
+
             ball = new THREE.Mesh(ballGeo, ballMat); ball.castShadow = true; scene.add(ball);
             ball.position.copy(playerPos).add(new THREE.Vector3(0, 0.5, 0)).add(camDir.clone().multiplyScalar(1.2));
             
@@ -647,98 +691,115 @@
             crosshair.style.transform = 'translate(-50%, -50%) scale(1)';
         }
 
-        function triggerFeedback(mainText, subText, detailsText, color, delay = 3500) {
+        function switchPossessionTo(t) {
+            isBallInFlight = false;
+            if (trailLine) { scene.remove(trailLine); if(trailLine.geometry) trailLine.geometry.dispose(); trailLine = null; }
+            trailPoints = [];
+            if (ball) { scene.remove(ball); ball = null; }
+
+            // Log successful pass to sequence history
+            if (currentPassRecord) {
+                currentPassRecord.completed = true;
+                currentPossessionPasses.push(currentPassRecord);
+                currentPassRecord = null;
+            }
+
+            let oldPlayerPos = playerPos.clone();
+            let newPlayerPos = t.group.position.clone();
+
+            let oldPlayerId = playerTacticalId;
+            let oldPlayerRole = playerRole;
+
+            playerTacticalId = t.id;
+            playerRole = t.role;
+
+            t.id = oldPlayerId;
+            t.role = oldPlayerRole;
+
+            t.group.position.copy(oldPlayerPos);
+            t.velocity.set(0, 0, 0);
+
+            playerPos.copy(newPlayerPos);
+            playerVel.set(0, 0, 0);
+
+            playerPosAtReceive.copy(playerPos);
+
+            matchClock = 20.0;
+            chargeValue = 0;
+            isCharging = false;
+
+            const banner = document.getElementById('scenario-banner');
+            banner.innerText = "POSSESSION RETAINED // BUILD ATTACK";
+            banner.style.color = "#00ff88";
+        }
+
+        function getPossessionRating() {
+            if (currentPossessionPasses.length === 0) {
+                return { grade: "N/A", sub: "", details: "" };
+            }
+            
+            let totalPasses = currentPossessionPasses.length;
+            let completedCount = 0;
+            let totalLinesBroken = 0;
+            let totalProgression = 0;
+            let decisionScoreSum = 0;
+
+            currentPossessionPasses.forEach(p => {
+                if (p.completed) {
+                    completedCount++;
+                    totalLinesBroken += p.linesBroken;
+                    totalProgression += Math.max(0, p.forwardProgression);
+                }
+                let maxS = Math.max(1, p.maxScore);
+                let chS = Math.max(0, p.chosenScore);
+                let efficiency = Math.min(100, (chS / maxS) * 100);
+                if (p.intercepted) efficiency *= 0.3; // harsh weight if cut out
+                decisionScoreSum += efficiency;
+            });
+
+            let completionRate = (completedCount / totalPasses) * 100;
+            let avgDecisionScore = decisionScoreSum / totalPasses;
+            let finalScore = (completionRate * 0.4) + (avgDecisionScore * 0.6);
+            
+            let grade = "C";
+            let sub = "STANDARD BUILD";
+            if (finalScore >= 90) { grade = "A+"; sub = "ELITE DEEP PLAYMAKER"; }
+            else if (finalScore >= 80) { grade = "A"; sub = "EXCELLENT FIELD IQ"; }
+            else if (finalScore >= 65) { grade = "B"; sub = "SOLID DISTRIBUTION"; }
+            else if (finalScore >= 45) { grade = "C"; sub = "CONSERVATIVE RETAINMENT"; }
+            else if (finalScore >= 25) { grade = "D"; sub = "RISKY DECISION MAKING"; }
+            else { grade = "F"; sub = "POOR RETENTION RATE"; }
+
+            let details = `PASSES: ${completedCount}/${totalPasses} | BROKEN LINES: ${totalLinesBroken} | PROG: ${Math.round(totalProgression)}m`;
+            return { grade, sub, details };
+        }
+
+        function triggerFeedback(mainText, subText, detailsText, color, delay = 4500) {
             if (!isRoundActive) return; isRoundActive = false; 
-            fbMain.innerText = mainText; fbSub.innerText = subText;
-            fbDetails.innerText = detailsText;
+            
+            let rating = getPossessionRating();
+            
+            // If the sequence included passes, overwrite the UI display to present the aggregated rating
+            if (rating.grade !== "N/A") {
+                fbMain.innerText = `RATING: ${rating.grade}`;
+                fbSub.innerText = `${rating.sub} (${mainText})`;
+                fbDetails.innerText = `${rating.details} | ${detailsText}`;
+                
+                // Color override matching the grade bracket dynamic
+                if (rating.grade.startsWith("A")) color = "#00ff88";
+                else if (rating.grade.startsWith("B")) color = "#00d4ff";
+                else if (rating.grade.startsWith("C")) color = "#ffcc00";
+                else color = "#ff2222";
+            } else {
+                fbMain.innerText = mainText; 
+                fbSub.innerText = subText;
+                fbDetails.innerText = detailsText;
+            }
+
             fbContainer.style.borderColor = color; fbMain.style.color = color;
             fbContainer.style.boxShadow = `0 20px 60px rgba(0,0,0,0.9), inset 0 0 30px ${color}33`;
             fbContainer.style.display = 'block';
             for (let key in keys) keys[key] = false; setTimeout(resetGame, delay);
-        }
-
-        function evaluatePassResult(receiver) {
-            let oppGoalZ = -PL; 
-            let forwardProgression = playerPos.z - receiver.group.position.z;
-            let driveDist = playerPosAtReceive.z - playerPosAtKick.z; // How far you dribbled forward
-            if (driveDist < 0) driveDist = 0;
-            
-            let closestDefDist = Infinity;
-            let playerClosestDefDist = Infinity;
-            let closestGoalSideDist = Infinity;
-            
-            defenders.forEach(d => { 
-                let dDist = receiver.group.position.distanceTo(d.group.position); 
-                if (dDist < closestDefDist) closestDefDist = dDist; 
-                
-                let pDist = playerPos.distanceTo(d.group.position);
-                if (pDist < playerClosestDefDist) playerClosestDefDist = pDist;
-                
-                if (d.group.position.z < playerPos.z && pDist < closestGoalSideDist) {
-                    closestGoalSideDist = pDist;
-                }
-            });
-
-            let linesBroken = 0;
-            defenders.forEach(d => { if (d.group.position.z < playerPos.z && d.group.position.z > receiver.group.position.z) linesBroken++; });
-
-            let rating = 0;
-            let subText = "";
-            let details = [];
-
-            // BASE RATING CALCULATION
-            let rawScore = (forwardProgression * 2.0) + (linesBroken * 25.0) + (closestDefDist * 2.0);
-            if (idealScoreAtKick > 0) {
-                let ratio = Math.max(0, Math.min(1, rawScore / idealScoreAtKick));
-                rating = Math.floor(45 + (Math.pow(ratio, 2.5) * 50)); 
-            } else rating = 45; 
-
-            // THE "EVERYTHING" FEEDBACK PENALTIES/BONUSES
-            if (closestGoalSideDist > 12.0 && linesBroken === 0 && forwardProgression < 15) {
-                // Defender gave space, but player did not drive into it
-                rating -= 20;
-                subText = "COWARDLY PASS";
-                details.push("FAILED TO DRIVE INTO SPACE (-20)");
-            } else if (closestGoalSideDist > 12.0 && driveDist < 5.0) {
-                rating -= 15;
-                details.push("DID NOT MAXIMIZE SPACE (-15)");
-            } else if (driveDist > 8.0) {
-                rating += 10;
-                details.push("GREAT DRIVE (+10)");
-            }
-
-            if (forwardProgression < 0) {
-                if (playerClosestDefDist < 6.0 && closestDefDist > 5.0) {
-                    rating = Math.max(rating, 70);
-                    subText = "SMART RECYCLING";
-                } else {
-                    rating = Math.min(rating, 40);
-                    subText = "POOR DECISION";
-                }
-            }
-
-            // Clamp Rating
-            rating = Math.max(0, Math.min(99, rating));
-            
-            if (!subText) {
-                if (rating >= 80) subText = "ELITE VISION";
-                else if (rating >= 60) subText = "GOOD DECISION";
-                else subText = "SAFE BUT AVERAGE";
-            }
-            
-            if (receiver === tacticalBestTeammate && rating >= 70) {
-                rating = Math.floor(Math.random() * 3) + 97; 
-                subText = "PERFECT PLAY";
-            }
-            
-            if (receiver !== tacticalBestTeammate && tacticalBestTeammate) tacticalBestTeammate.shirtMat.color.setHex(0xffff00);
-
-            details.push(`PROG: ${Math.round(forwardProgression)}m`);
-            details.push(`DRIVE: ${Math.round(driveDist)}m`);
-            details.push(`LINES: ${linesBroken}`);
-
-            let color = rating >= 80 ? "#00ff88" : (rating >= 60 ? "#ffcc00" : "#ff4444");
-            triggerFeedback("RATING: " + rating, subText, details.join("  |  "), color, 4500);
         }
 
         function evaluateShotResult(isGoal) {
@@ -820,8 +881,6 @@
                         ballVel.z += (desired.z - ballVel.z) * dt * 5.0;
                     } else if (ball.position.y < 1.5) {
                         scene.remove(ball); ball = null; isReceivingPass = false;
-                        
-                        // NEW: MARK POSITION WHEN BALL IS CAUGHT
                         playerPosAtReceive.copy(playerPos);
                         
                         const banner = document.getElementById('scenario-banner');
@@ -917,7 +976,7 @@
                             passCompleted = true; ballVel.set(0, 0, 0);
                             let toBall = ball.position.clone().sub(t.group.position).normalize();
                             ball.position.copy(t.group.position).add(toBall.multiplyScalar(0.6));
-                            ball.position.y = BALL_RADIUS; evaluatePassResult(t);
+                            ball.position.y = BALL_RADIUS; switchPossessionTo(t);
                         }
                     });
 
@@ -925,6 +984,13 @@
                         if (!passCompleted && ball.position.distanceTo(d.group.position) < 2.0 && ball.position.y < 2.5) {
                             passCompleted = true; ballVel.set(0, 0, 0);
                             ball.position.copy(d.group.position); ball.position.y = BALL_RADIUS; ball.position.z -= 0.6; 
+                            
+                            // Log cut out pass to history before resetting
+                            if (currentPassRecord) {
+                                currentPassRecord.intercepted = true;
+                                currentPossessionPasses.push(currentPassRecord);
+                                currentPassRecord = null;
+                            }
                             triggerFeedback("INTERCEPTED", "POOR DECISION", "", "#ff2222");
                         }
                     });
@@ -975,7 +1041,6 @@
 
                     d.update(dt, timeSec, isBallInFlight, playerPos, shouldPress, offsideLineZ, yaw, isClosestToBall);
                     
-                    // IMMUNITY AFTER RELEASE: Tackle only counts if you actually have the ball
                     if (distToPlayer < 1.2 && !isBallInFlight && !isReceivingPass) {
                         let heldTime = (20.0 - matchClock).toFixed(1);
                         triggerFeedback("TACKLED!", "DEFENDER CAUGHT YOU", `HELD BALL FOR: ${heldTime}s`, "#ff2222");
