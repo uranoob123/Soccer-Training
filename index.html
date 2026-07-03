@@ -2,10 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <title>Football IQ Trainer</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,700;0,900;1,900&display=swap');
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Montserrat', sans-serif; user-select: none; }
+        html, body { margin: 0; overflow: hidden; background: #000; font-family: 'Montserrat', sans-serif; user-select: none; touch-action: none; -webkit-user-select: none; overscroll-behavior: none; }
+        body { position: fixed; inset: 0; }
         
         /* UI HUD */
         #ui { position: absolute; top: 40px; left: 40px; color: white; pointer-events: none; z-index: 10; transition: opacity 0.3s; }
@@ -65,6 +67,56 @@
         #fb-details { font-size: 0.85rem; font-weight: 800; color: #888; margin-top: 12px; text-transform: uppercase; letter-spacing: 1.5px; }
         
         #overlay { position: absolute; inset: 0; background: radial-gradient(circle, transparent 50%, rgba(0,0,0,0.6) 100%); pointer-events: none; z-index: 5; }
+
+        /* TOUCH CONTROLS (mobile) */
+        #touch-look-layer { position: absolute; inset: 0; z-index: 8; touch-action: none; display: none; }
+
+        #touch-controls { position: absolute; inset: 0; z-index: 15; display: none; pointer-events: none; }
+        #touch-controls > * { pointer-events: auto; }
+
+        #joystick-zone {
+            position: absolute; left: 30px; bottom: 30px; width: 130px; height: 130px;
+            border-radius: 50%; background: rgba(255,255,255,0.08); border: 2px solid rgba(255,255,255,0.25);
+            touch-action: none;
+        }
+        #joystick-knob {
+            position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px;
+            border-radius: 50%; background: rgba(0,255,136,0.55); border: 2px solid rgba(0,255,136,0.9);
+            box-shadow: 0 0 15px rgba(0,255,136,0.5); transition: transform 0.05s linear;
+        }
+
+        #btn-sprint, #btn-shoot, #btn-mobile-settings { touch-action: none; user-select: none; }
+
+        #btn-sprint {
+            position: absolute; right: 130px; bottom: 46px; width: 74px; height: 74px; border-radius: 50%;
+            background: rgba(0,212,255,0.18); border: 2px solid rgba(0,212,255,0.6); color: #00d4ff;
+            font-weight: 900; font-size: 11px; letter-spacing: 1px; display: flex; align-items: center; justify-content: center; text-align: center;
+        }
+        #btn-sprint.pressed { background: rgba(0,212,255,0.5); }
+
+        #btn-shoot {
+            position: absolute; right: 30px; bottom: 30px; width: 100px; height: 100px; border-radius: 50%;
+            background: rgba(255,255,255,0.1); border: 3px solid rgba(255,255,255,0.6); color: #fff;
+            font-weight: 900; font-size: 13px; letter-spacing: 1px; display: flex; align-items: center; justify-content: center; text-align: center;
+        }
+        #btn-shoot.pressed { background: rgba(255,34,34,0.45); border-color: #ff2222; }
+
+        #btn-mobile-settings {
+            position: absolute; top: 30px; right: 30px; width: 46px; height: 46px; border-radius: 12px;
+            background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.2); color: #fff; font-size: 20px;
+            display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);
+        }
+
+        body.touch-device #ui { top: 20px; left: 20px; }
+        body.touch-device h2 { font-size: 34px; }
+        body.touch-device .subtitle { font-size: 11px; }
+        body.touch-device .controls-hint { font-size: 10px; max-width: 220px; }
+        body.touch-device .hud-container { bottom: 150px; gap: 10px; }
+        body.touch-device .hud-box { padding: 8px 12px; }
+        body.touch-device .bar-bg { width: 100px; }
+        body.touch-device #feedback { padding: 20px 30px; width: 78vw; box-sizing: border-box; }
+        body.touch-device #fb-main { font-size: 2.6rem; }
+        body.touch-device #settings-menu { width: 88vw; padding: 28px; }
     </style>
 </head>
 <body>
@@ -125,6 +177,14 @@
         </div>
     </div>
 
+    <div id="touch-look-layer"></div>
+    <div id="touch-controls">
+        <div id="joystick-zone"><div id="joystick-knob"></div></div>
+        <div id="btn-sprint">SPRINT</div>
+        <div id="btn-shoot">SHOOT</div>
+        <div id="btn-mobile-settings">&#9881;</div>
+    </div>
+
     <div id="crosshair"></div>
     <div id="feedback">
         <div id="fb-main">ELITE VISION</div>
@@ -171,6 +231,8 @@
         ];
 
         // --- STATE & SETTINGS ---
+        const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+        let touchMove = { x: 0, z: 0 }; // analog input from the virtual joystick
         let isPaused = false, timeOfDay = 'day', difficultyLevel = 10; 
         let selectedPosition = 'random'; 
         let currentDefensiveStyle = 'PRESS'; 
@@ -248,8 +310,8 @@
         window.toggleSettings = () => {
             isPaused = !isPaused;
             settingsOverlay.style.display = isPaused ? 'flex' : 'none';
-            if (!isPaused) { lastTime = performance.now(); document.body.requestPointerLock(); } 
-            else { document.exitPointerLock(); }
+            if (!isPaused) { lastTime = performance.now(); if (!isTouchDevice) document.body.requestPointerLock(); } 
+            else { if (!isTouchDevice) document.exitPointerLock(); }
         };
 
         // --- STADIUM & PITCH ---
@@ -372,7 +434,7 @@
                 scene.add(this.group);
             }
             
-            update(dt, timeSec, ballInFlight, pPos, isPressing = false, offsideLineZ = -75, playerYaw = 0, isClosestToBall = false) {
+            update(dt, timeSec, ballInFlight, pPos, isPressing = false, offsideLineZ = -75, playerYaw = 0, isClosestToBall = false, pressAngle = null, markTarget = null) {
                 if (isPaused) return;
                 
                 let targetSpeed = this.baseSpeed; 
@@ -402,7 +464,14 @@
                             targetSpeed = this.baseSpeed;
                         }
                     } else if (isPressing) { 
-                        this.tacticalTarget.copy(pPos);
+                        if (pressAngle !== null) {
+                            // Multiple defenders pressing at once: approach from assigned, spread-out
+                            // angles around the player instead of all converging on the same point.
+                            let standoff = 2.4;
+                            this.tacticalTarget.set(pPos.x + Math.sin(pressAngle) * standoff, 0, pPos.z + Math.cos(pressAngle) * standoff);
+                        } else {
+                            this.tacticalTarget.copy(pPos);
+                        }
                         let distToPlayer = this.group.position.distanceTo(pPos);
                         if (distToPlayer < 4.0) {
                             targetSpeed = 3.0; 
@@ -410,11 +479,25 @@
                         } else { targetSpeed += (intensity * 5.0); }
                     } else {
                         this.tacticalTarget.set(desiredX, 0, desiredZ);
-                        let distToPlayer = this.group.position.distanceTo(pPos);
-                        
-                        if (distToPlayer < 15.0) {
-                            this.tacticalTarget.x = pPos.x + (this.id % 2 === 0 ? -3 : 3);
-                            this.tacticalTarget.z = pPos.z - 5;
+
+                        if (markTarget) {
+                            // Man-mark the assigned attacking outlet: sit goal-side of them, biased
+                            // onto the passing lane from the ball carrier, so it's real personal
+                            // coverage rather than a loose shared zone everyone drifts toward.
+                            let laneT = 0.62; // weighted toward the marked man for tight coverage
+                            let laneX = pPos.x + (markTarget.x - pPos.x) * laneT;
+                            let laneZ = pPos.z + (markTarget.z - pPos.z) * laneT;
+                            let markStrength = Math.min(1, 0.5 + intensity * 0.5);
+                            this.tacticalTarget.x += (laneX - this.tacticalTarget.x) * markStrength;
+                            this.tacticalTarget.z += (laneZ - this.tacticalTarget.z) * markStrength;
+                        } else {
+                            // No assignment available (more defenders than attacking outlets) —
+                            // just hold defensive shape close to the ball rather than converging.
+                            let distToPlayer = this.group.position.distanceTo(pPos);
+                            if (distToPlayer < 15.0) {
+                                this.tacticalTarget.x = pPos.x + (this.id % 2 === 0 ? -3 : 3);
+                                this.tacticalTarget.z = pPos.z - 5;
+                            }
                         }
                     }
                 } 
@@ -737,57 +820,93 @@
             banner.style.color = "#00ff88";
         }
 
-        function getPossessionRating() {
+        function getCoachAssessment() {
             if (currentPossessionPasses.length === 0) {
                 return { grade: "N/A", sub: "", details: "" };
             }
-            
-            let totalPasses = currentPossessionPasses.length;
-            let completedCount = 0;
-            let totalLinesBroken = 0;
-            let totalProgression = 0;
-            let decisionScoreSum = 0;
+
+            let n = currentPossessionPasses.length;
+            let completedCount = 0, interceptedCount = 0;
+            let totalLinesBroken = 0, totalProgression = 0;
+            let decisionSum = 0, executionSum = 0;
 
             currentPossessionPasses.forEach(p => {
-                if (p.completed) {
-                    completedCount++;
-                    totalLinesBroken += p.linesBroken;
-                    totalProgression += Math.max(0, p.forwardProgression);
-                }
+                // DECISION: how close was the chosen option to the best one actually available,
+                // regardless of whether it came off. A well-read pass that gets cut out is still
+                // a good decision — that's a coaching distinction, not just a stat.
                 let maxS = Math.max(1, p.maxScore);
                 let chS = Math.max(0, p.chosenScore);
-                let efficiency = Math.min(100, (chS / maxS) * 100);
-                if (p.intercepted) efficiency *= 0.3; // harsh weight if cut out
-                decisionScoreSum += efficiency;
+                let decisionPct = Math.min(100, (chS / maxS) * 100);
+                decisionSum += decisionPct;
+
+                // EXECUTION: did the pass actually reach its man, cleanly.
+                let execPct;
+                if (p.completed) {
+                    execPct = 100; completedCount++;
+                    totalLinesBroken += p.linesBroken;
+                    totalProgression += Math.max(0, p.forwardProgression);
+                } else if (p.intercepted) {
+                    execPct = 10; interceptedCount++;
+                } else {
+                    execPct = 35; // wayward: out of bounds / died before reaching anyone
+                }
+                executionSum += execPct;
             });
 
-            let completionRate = (completedCount / totalPasses) * 100;
-            let avgDecisionScore = decisionScoreSum / totalPasses;
-            let finalScore = (completionRate * 0.4) + (avgDecisionScore * 0.6);
-            
-            let grade = "C";
-            let sub = "STANDARD BUILD";
-            if (finalScore >= 90) { grade = "A+"; sub = "ELITE DEEP PLAYMAKER"; }
-            else if (finalScore >= 80) { grade = "A"; sub = "EXCELLENT FIELD IQ"; }
-            else if (finalScore >= 65) { grade = "B"; sub = "SOLID DISTRIBUTION"; }
-            else if (finalScore >= 45) { grade = "C"; sub = "CONSERVATIVE RETAINMENT"; }
-            else if (finalScore >= 25) { grade = "D"; sub = "RISKY DECISION MAKING"; }
-            else { grade = "F"; sub = "POOR RETENTION RATE"; }
+            let avgDecision = decisionSum / n;
+            let avgExecution = executionSum / n;
+            let overall = avgDecision * 0.65 + avgExecution * 0.35;
 
-            let details = `PASSES: ${completedCount}/${totalPasses} | BROKEN LINES: ${totalLinesBroken} | PROG: ${Math.round(totalProgression)}m`;
-            return { grade, sub, details };
+            function letterFor(score) {
+                if (score >= 90) return "A+"; if (score >= 80) return "A"; if (score >= 65) return "B";
+                if (score >= 45) return "C"; if (score >= 25) return "D"; return "F";
+            }
+            let decisionGrade = letterFor(avgDecision);
+            let executionGrade = letterFor(avgExecution);
+            let overallGrade = letterFor(overall);
+
+            // Coach's voice — the specific note depends on WHERE the problem is, same as a real debrief.
+            let comment;
+            let dHigh = avgDecision >= 75, dLow = avgDecision < 45;
+            let eHigh = avgExecution >= 75, eLow = avgExecution < 45;
+
+            if (interceptedCount >= 2) {
+                comment = "You keep threading it into covered lanes. Check who's shadowing the pass before you commit to it.";
+            } else if (dHigh && eHigh) {
+                comment = "That's the picture I want — good read, clean execution. Keep playing like that.";
+            } else if (dHigh && eLow) {
+                comment = "Right idea every time, execution's letting you down. Slow the pass down and pick your weight.";
+            } else if (dLow && eHigh) {
+                comment = "Technically tidy, but you're not scanning first. Check your shoulder before you receive.";
+            } else if (dLow) {
+                comment = "Rushed decisions with no real pressure on you. Take the extra half-second to find the better option.";
+            } else {
+                comment = "Solid, unspectacular. Keep building — take the higher-value option when it's actually on.";
+            }
+
+            let details = `DECISION: ${decisionGrade} | EXECUTION: ${executionGrade} | ${completedCount}/${n} COMPLETED | ${totalLinesBroken} LINES BROKEN | ${Math.round(totalProgression)}m PROG`;
+            return { grade: overallGrade, sub: comment, details };
         }
 
         function triggerFeedback(mainText, subText, detailsText, color, delay = 4500) {
             if (!isRoundActive) return; isRoundActive = false; 
+
+            // A kick that never reached anyone (went out of bounds, died mid-flight) used to just
+            // vanish from the stats. Flush it in as a wayward pass so the coach actually sees it —
+            // unless this was a shot attempt on goal, which isn't a passing decision to grade here.
+            const isShotOutcome = (mainText === "GOAL!" || mainText === "MISSED SHOT" || mainText === "SAVED!");
+            if (currentPassRecord) {
+                if (!isShotOutcome) currentPossessionPasses.push(currentPassRecord);
+                currentPassRecord = null;
+            }
             
-            let rating = getPossessionRating();
+            let rating = getCoachAssessment();
             
-            // If the sequence included passes, overwrite the UI display to present the aggregated rating
+            // If the sequence included passes, overwrite the UI display to present the coach's grade
             if (rating.grade !== "N/A") {
-                fbMain.innerText = `RATING: ${rating.grade}`;
-                fbSub.innerText = `${rating.sub} (${mainText})`;
-                fbDetails.innerText = `${rating.details} | ${detailsText}`;
+                fbMain.innerText = `COACH GRADE: ${rating.grade}`;
+                fbSub.innerText = rating.sub;
+                fbDetails.innerText = `${rating.details} | ${mainText}${detailsText ? ' — ' + detailsText : ''}`;
                 
                 // Color override matching the grade bracket dynamic
                 if (rating.grade.startsWith("A")) color = "#00ff88";
@@ -830,20 +949,27 @@
             triggerFeedback(mainText, subText, `DIST: ${Math.round(distToGoal)}m`, color, 4500);
         }
 
+        function startCharge() {
+            if (!isPaused && !isBallInFlight && isRoundActive && !isReceivingPass) isCharging = true;
+        }
+        function releaseCharge() {
+            if (isCharging) { isCharging = false; fireBall(); }
+        }
+
         window.addEventListener('keydown', e => { 
             if(e.code === 'Escape') { toggleSettings(); return; }
             if(isPaused) return;
             if(e.code === 'KeyW') keys.w = true; if(e.code === 'KeyS') keys.s = true;
             if(e.code === 'KeyA') keys.a = true; if(e.code === 'KeyD') keys.d = true;
             if(e.code === 'ShiftLeft') keys.shift = true;
-            if(e.code === 'Space' && !isBallInFlight && isRoundActive && !isReceivingPass) isCharging = true;
+            if(e.code === 'Space') startCharge();
         });
         window.addEventListener('keyup', e => { 
             if(isPaused) return;
             if(e.code === 'KeyW') keys.w = false; if(e.code === 'KeyS') keys.s = false;
             if(e.code === 'KeyA') keys.a = false; if(e.code === 'KeyD') keys.d = false;
             if(e.code === 'ShiftLeft') keys.shift = false;
-            if(e.code === 'Space' && isCharging) { isCharging = false; fireBall(); }
+            if(e.code === 'Space') releaseCharge();
         });
         document.addEventListener('mousemove', e => { 
             if (document.pointerLockElement && !isPaused) { 
@@ -852,8 +978,84 @@
             } 
         });
         document.addEventListener('click', () => { 
-            if (!isPaused) document.body.requestPointerLock(); 
+            if (!isPaused && !isTouchDevice) document.body.requestPointerLock(); 
         });
+
+        // --- TOUCH CONTROLS SETUP (mobile) ---
+        if (isTouchDevice) {
+            document.body.classList.add('touch-device');
+            document.getElementById('touch-controls').style.display = 'block';
+            document.getElementById('touch-look-layer').style.display = 'block';
+            document.querySelector('.controls-hint').innerHTML = 'DRAG SCREEN: LOOK &nbsp;|&nbsp; JOYSTICK: MOVE &nbsp;|&nbsp; HOLD SHOOT: PASS/SHOOT';
+
+            // Drag-to-look (replaces mouse pointer lock, which isn't available on touch)
+            const lookLayer = document.getElementById('touch-look-layer');
+            let lookTouchId = null, lastLookX = 0, lastLookY = 0;
+            lookLayer.addEventListener('touchstart', e => {
+                const t = e.changedTouches[0];
+                lookTouchId = t.identifier; lastLookX = t.clientX; lastLookY = t.clientY;
+            }, { passive: true });
+            lookLayer.addEventListener('touchmove', e => {
+                if (isPaused) return;
+                for (const t of e.changedTouches) {
+                    if (t.identifier !== lookTouchId) continue;
+                    let dx = t.clientX - lastLookX, dy = t.clientY - lastLookY;
+                    lastLookX = t.clientX; lastLookY = t.clientY;
+                    yaw -= dx * 0.005;
+                    pitchRot = Math.max(-0.8, Math.min(0.8, pitchRot - dy * 0.005));
+                }
+            }, { passive: true });
+            lookLayer.addEventListener('touchend', e => {
+                for (const t of e.changedTouches) if (t.identifier === lookTouchId) lookTouchId = null;
+            }, { passive: true });
+
+            // Virtual joystick (movement)
+            const joyZone = document.getElementById('joystick-zone');
+            const joyKnob = document.getElementById('joystick-knob');
+            let joyTouchId = null, joyCenter = { x: 0, y: 0 };
+            const JOY_RADIUS = 50;
+            joyZone.addEventListener('touchstart', e => {
+                const t = e.changedTouches[0];
+                const rect = joyZone.getBoundingClientRect();
+                joyCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+                joyTouchId = t.identifier;
+            }, { passive: true });
+            joyZone.addEventListener('touchmove', e => {
+                for (const t of e.changedTouches) {
+                    if (t.identifier !== joyTouchId) continue;
+                    let dx = t.clientX - joyCenter.x, dy = t.clientY - joyCenter.y;
+                    let dist = Math.min(JOY_RADIUS, Math.hypot(dx, dy));
+                    let ang = Math.atan2(dy, dx);
+                    let kx = Math.cos(ang) * dist, ky = Math.sin(ang) * dist;
+                    joyKnob.style.transform = `translate(${kx}px, ${ky}px)`;
+                    touchMove.x = kx / JOY_RADIUS; touchMove.z = ky / JOY_RADIUS;
+                }
+            }, { passive: true });
+            const releaseJoystick = e => {
+                for (const t of e.changedTouches) {
+                    if (t.identifier !== joyTouchId) continue;
+                    joyTouchId = null; touchMove.x = 0; touchMove.z = 0;
+                    joyKnob.style.transform = 'translate(0px, 0px)';
+                }
+            };
+            joyZone.addEventListener('touchend', releaseJoystick, { passive: true });
+            joyZone.addEventListener('touchcancel', releaseJoystick, { passive: true });
+
+            // Sprint (hold)
+            const sprintBtn = document.getElementById('btn-sprint');
+            sprintBtn.addEventListener('touchstart', e => { e.preventDefault(); keys.shift = true; sprintBtn.classList.add('pressed'); });
+            sprintBtn.addEventListener('touchend', e => { e.preventDefault(); keys.shift = false; sprintBtn.classList.remove('pressed'); });
+            sprintBtn.addEventListener('touchcancel', e => { keys.shift = false; sprintBtn.classList.remove('pressed'); });
+
+            // Shoot / pass (hold to charge, release to kick)
+            const shootBtn = document.getElementById('btn-shoot');
+            shootBtn.addEventListener('touchstart', e => { e.preventDefault(); startCharge(); shootBtn.classList.add('pressed'); });
+            shootBtn.addEventListener('touchend', e => { e.preventDefault(); releaseCharge(); shootBtn.classList.remove('pressed'); });
+            shootBtn.addEventListener('touchcancel', e => { releaseCharge(); shootBtn.classList.remove('pressed'); });
+
+            // Settings (gear icon replaces ESC key)
+            document.getElementById('btn-mobile-settings').addEventListener('touchstart', e => { e.preventDefault(); toggleSettings(); });
+        }
 
         function animate(now) {
             requestAnimationFrame(animate);
@@ -902,7 +1104,9 @@
                         let input = new THREE.Vector3();
                         if (keys.w) input.z -= 1; if (keys.s) input.z += 1;
                         if (keys.a) input.x -= 1; if (keys.d) input.x += 1;
-                        if (input.lengthSq() > 0) input.normalize().applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
+                        input.x += touchMove.x; input.z += touchMove.z;
+                        if (input.length() > 1) input.normalize();
+                        if (input.lengthSq() > 0) input.applyAxisAngle(new THREE.Vector3(0,1,0), yaw);
 
                         let isSprinting = keys.shift && playerStamina > 0; let accel = isSprinting ? 28 : 15; let maxSpd = isSprinting ? 14 : 7;
 
@@ -1029,34 +1233,109 @@
                 if (oppGoalKeeper) oppGoalKeeper.update(dt, timeSec, isBallInFlight, playerPos, false, offsideLineZ, yaw, false);
                 teammates.forEach(t => t.update(dt, timeSec, isBallInFlight, playerPos, false, offsideLineZ, yaw, false));
                 
-                defenders.forEach(d => { 
-                    let shouldPress = false;
-                    let isClosestToBall = (d === closestDefToBall);
+                // Decide who presses the ball carrier — capped, so you don't get swarmed by
+                // half the defense at once. Anyone not in the pressing group gets assigned to
+                // man-mark a specific attacker instead (see below).
+                const MAX_PRESSERS = 2;
+                let pressCandidates = [];
+                defenders.forEach(d => {
+                    let dist = d.group.position.distanceTo(playerPos);
+                    let priority = null; // lower = presses first
 
                     if (d === closestDef) {
                         let engagementDist = currentDefensiveStyle === 'SPACE' ? 15 : Infinity;
-                        if (d.group.position.distanceTo(playerPos) < engagementDist) {
-                            shouldPress = true;
-                        }
+                        if (dist < engagementDist) priority = 0;
                     }
-
-                    if (closestDef && closestDef.group.position.z > playerPos.z + 0.5) {
-                        if (d === closestGoalSideDef) shouldPress = true;
+                    if (closestDef && closestDef.group.position.z > playerPos.z + 0.5 && d === closestGoalSideDef) {
+                        priority = priority === null ? 1 : priority;
                     }
-
-                    let distToPlayer = d.group.position.distanceTo(playerPos);
-                    if (distToPlayer < 8.0 && d.group.position.z < playerPos.z + 1.0) {
-                        shouldPress = true;
+                    if (dist < 8.0 && d.group.position.z < playerPos.z + 1.0) {
+                        priority = priority === null ? 2 : priority;
                     }
+                    if (priority !== null) pressCandidates.push({ d, priority, dist });
+                });
+                pressCandidates.sort((a, b) => a.priority - b.priority || a.dist - b.dist);
+                let pressingSet = new Set(pressCandidates.slice(0, MAX_PRESSERS).map(c => c.d));
+                defenders.forEach(d => { d.__shouldPress = pressingSet.has(d); });
 
-                    d.update(dt, timeSec, isBallInFlight, playerPos, shouldPress, offsideLineZ, yaw, isClosestToBall);
+                // Man-marking: give every non-pressing defender their own attacking teammate to
+                // track and block the passing lane to, via exclusive nearest-pair assignment, so
+                // coverage spreads across your options instead of everyone clumping on one man.
+                let markableTeammates = teammates.filter(t => t.role !== 'myGoalie');
+                let markers = defenders.filter(d => !d.__shouldPress);
+                let candidatePairs = [];
+                markers.forEach(d => {
+                    markableTeammates.forEach(t => {
+                        candidatePairs.push({ d, t, dist: d.group.position.distanceTo(t.group.position) });
+                    });
+                });
+                candidatePairs.sort((a, b) => a.dist - b.dist);
+                let assignedDefenders = new Set(), assignedTeammates = new Set();
+                candidatePairs.forEach(pair => {
+                    if (assignedDefenders.has(pair.d) || assignedTeammates.has(pair.t)) return;
+                    pair.d.__markTarget = pair.t.group.position;
+                    assignedDefenders.add(pair.d); assignedTeammates.add(pair.t);
+                });
+                markers.forEach(d => { if (!assignedDefenders.has(d)) d.__markTarget = null; });
+
+                // When several defenders press at once, spread them around the player instead of
+                // letting them all converge on the exact same point (which is what caused them to
+                // stack on top of each other). Angles are assigned in the defenders' current bearing
+                // order around the player so they settle into position smoothly, not by teleporting.
+                let pressingDefs = defenders.filter(d => d.__shouldPress);
+                if (pressingDefs.length > 1) {
+                    pressingDefs.sort((a, b) => {
+                        let angA = Math.atan2(a.group.position.x - playerPos.x, a.group.position.z - playerPos.z);
+                        let angB = Math.atan2(b.group.position.x - playerPos.x, b.group.position.z - playerPos.z);
+                        return angA - angB;
+                    });
+                    let baseAngle = Math.atan2(pressingDefs[0].group.position.x - playerPos.x, pressingDefs[0].group.position.z - playerPos.z);
+                    pressingDefs.forEach((d, i) => {
+                        d.__pressAngle = baseAngle + (i * (Math.PI * 2 / pressingDefs.length));
+                    });
+                } else if (pressingDefs.length === 1) {
+                    pressingDefs[0].__pressAngle = null; // lone presser goes straight at the player as before
+                }
+
+                defenders.forEach(d => { 
+                    let shouldPress = d.__shouldPress;
+                    let isClosestToBall = (d === closestDefToBall);
+                    let pressAngle = shouldPress ? (d.__pressAngle ?? null) : null;
+                    let markTarget = shouldPress ? null : (d.__markTarget ?? null);
+
+                    d.update(dt, timeSec, isBallInFlight, playerPos, shouldPress, offsideLineZ, yaw, isClosestToBall, pressAngle, markTarget);
                     
                     // Added check for tackleImmunityTimer to prevent instantaneous tackles on acquisition
+                    let distToPlayer = d.group.position.distanceTo(playerPos);
                     if (distToPlayer < 1.2 && !isBallInFlight && !isReceivingPass && tackleImmunityTimer <= 0) {
                         let heldTime = (20.0 - matchClock).toFixed(1);
                         triggerFeedback("TACKLED!", "DEFENDER CAUGHT YOU", `HELD BALL FOR: ${heldTime}s`, "#ff2222");
                     }
                 });
+
+                // Hard safety net: whatever the reason (pressing overlap, both defenders shadowing
+                // the same passing lane, formation drift), never let two defenders' bodies overlap.
+                const MIN_DEFENDER_SPACING = 1.5;
+                for (let i = 0; i < defenders.length; i++) {
+                    for (let j = i + 1; j < defenders.length; j++) {
+                        let a = defenders[i].group.position, b = defenders[j].group.position;
+                        let dx = a.x - b.x, dz = a.z - b.z;
+                        let dist = Math.hypot(dx, dz);
+                        if (dist < 0.001) {
+                            // exactly coincident: nudge apart deterministically so they don't jitter forever
+                            let ang = (i * 2.399 + j * 1.117);
+                            a.x += Math.cos(ang) * MIN_DEFENDER_SPACING * 0.5;
+                            a.z += Math.sin(ang) * MIN_DEFENDER_SPACING * 0.5;
+                            b.x -= Math.cos(ang) * MIN_DEFENDER_SPACING * 0.5;
+                            b.z -= Math.sin(ang) * MIN_DEFENDER_SPACING * 0.5;
+                        } else if (dist < MIN_DEFENDER_SPACING) {
+                            let overlap = (MIN_DEFENDER_SPACING - dist) * 0.5;
+                            let nx = dx / dist, nz = dz / dist;
+                            a.x += nx * overlap; a.z += nz * overlap;
+                            b.x -= nx * overlap; b.z -= nz * overlap;
+                        }
+                    }
+                }
             }
 
             let idealCamPos = playerPos.clone().add(new THREE.Vector3(0, 1.8, 0));
